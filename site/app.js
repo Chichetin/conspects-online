@@ -374,17 +374,40 @@ document.addEventListener("keydown", (e) => {
 const posKey = (path) => `pos:${path}`;
 
 if (!isLecture) {
-  // на главной и на странице курса — отметки о прочитанном и «Продолжить» для последней начатой лекции
+  // на главной и на странице курса — отметки о прочитанном и «Продолжить» для последней начатой лекции;
+  // кружок справа переключает лекцию «прочитана / нет» (полный пересчёт — при следующем открытии лекции)
+  const DONE = 0.9;
   let last = null;
+  function renderLecture(a, mark) {
+    const saved = store.json(posKey(pagePath(a.href))) || {};
+    const pct = saved.all ? 1 : saved.pct || 0;
+    const done = pct >= DONE;
+    a.classList.toggle("read-done", done);
+    a.classList.toggle("read-some", pct >= 0.02 && !done);
+    a.style.setProperty("--read", pct.toFixed(3));
+    a.querySelector(".read")?.remove();
+    if (pct >= 0.02) a.querySelector(".num").append(el("span", { class: "read", text: done ? "прочитано" : `прочитано ${Math.round(pct * 100)}%` }));
+    mark.className = `read-mark${done ? " done" : pct > 0 ? " part" : ""}`;
+    mark.style.setProperty("--f", pct.toFixed(3));
+    mark.setAttribute("aria-label", `${a.querySelector(".t").textContent}: отметить ${done ? "непрочитанной" : "прочитанной"}`);
+    mark.title = done ? "Прочитано · отметить непрочитанной" : "Отметить прочитанной";
+    return { saved, done };
+  }
   document.querySelectorAll(".lectures a").forEach((a) => {
-    const saved = store.json(posKey(pagePath(a.href)));
-    if (saved?.t && saved.p > 0.03 && saved.p < 0.97 && (!last || saved.t > last.saved.t)) last = { a, saved };
-    const max = saved?.max || 0;
-    if (max < 0.02) return;
-    const done = max >= 0.97;
-    a.style.setProperty("--read", done ? 1 : max.toFixed(3));
-    a.classList.add(done ? "read-done" : "read-some");
-    a.querySelector(".num").append(el("span", { class: "read", text: done ? "прочитано" : `прочитано ${Math.round(max * 100)}%` }));
+    const mark = el("button", { type: "button" });
+    a.after(mark);
+    a.parentElement.classList.add("has-mark");
+    mark.addEventListener("click", () => {
+      const k = posKey(pagePath(a.href));
+      const rec = store.json(k) || {};
+      const done = (rec.all ? 1 : rec.pct || 0) >= DONE;
+      delete rec.max;
+      if (done) { delete rec.all; rec.read = {}; rec.pct = 0; } else { rec.all = true; rec.pct = 1; }
+      store.set(k, JSON.stringify(rec));
+      renderLecture(a, mark);
+    });
+    const { saved, done } = renderLecture(a, mark);
+    if (saved.t && saved.p > 0.03 && !done && (!last || saved.t > last.saved.t)) last = { a, saved };
   });
   const anchor = document.querySelector(".search-field") || document.querySelector(".list-page h1");
   if (last && anchor) {
@@ -392,7 +415,7 @@ if (!isLecture) {
     anchor.after(el("a", {
       class: "continue", href: last.a.href,
       style: course ? course.getAttribute("style") : "",
-    }, el("span", { class: "ring", style: `--p: ${last.saved.p}` }),
+    }, el("span", { class: "ring", style: `--p: ${last.saved.pct || 0}` }),
     el("span", {}, "Продолжить чтение", el("b", { text: last.a.querySelector(".t").textContent }))));
   }
 }
@@ -475,6 +498,107 @@ function initLecture() {
     }));
   });
 
+  // ----- что прочитано -----
+  // Текст делится на блоки (абзацы, пункты, картинки, таблицы). Блок засчитывается, когда пробыл в средней
+  // части экрана ~40% времени, нужного на его чтение: при быстрой прокрутке он пролетает и не считается.
+  // Время идёт, только пока вкладка видна, есть активность (≤ 90 с без действий) и не включён режим повторения.
+  // Q&A, сноски и глоссарий — справочные, в прогресс не входят. Хранится: { раздел: [номера блоков] }.
+  const WPM = 180;
+  const BLOCK = "p, li, figure, table, blockquote, pre";
+  const glossary = sections.filter((sec) => sectionTitle(sec).replace(/^[\d.]+\s*/, "") === "Глоссарий");
+  const skip = (e) => e.closest("details.qa, .footnotes, .lecture-head, .secmeta, .pager, aside") || glossary.some((g) => g.contains(e));
+  const candidates = [...main.querySelectorAll(BLOCK)].filter((e) => !skip(e));
+  const candidateSet = new Set(candidates);
+  const perSection = new Map();
+  const blocks = candidates
+    .filter((e) => ![...e.querySelectorAll(BLOCK)].some((x) => candidateSet.has(x))) // самые вложенные
+    .map((e) => {
+      const words = e.matches("figure") ? 15 : (e.textContent.match(/\S+/g) || []).length;
+      const sec = e.closest("section[id]")?.id || "";
+      const idx = perSection.get(sec) || 0;
+      perSection.set(sec, idx + 1);
+      return { el: e, sec, idx, words, need: Math.max(1500, (words / WPM) * 60000 * 0.4), acc: 0, read: false };
+    })
+    .filter((b) => b.words > 0);
+  const byEl = new Map(blocks.map((b) => [b.el, b]));
+  const totalWords = blocks.reduce((n, b) => n + b.words, 0) || 1;
+
+  const saved = store.json(key) || {};
+  if (saved.all) blocks.forEach((b) => { b.read = true; });
+  else if (saved.read) blocks.forEach((b) => { b.read = Boolean(saved.read[b.sec]?.includes(b.idx)); });
+
+  const share = (list) => {
+    const all = list.reduce((n, b) => n + b.words, 0);
+    return all ? list.reduce((n, b) => n + (b.read ? b.words : 0), 0) / all : 0;
+  };
+  const isDone = (f) => f >= 0.9;
+
+  function persist() {
+    const read = {};
+    for (const b of blocks) if (b.read) (read[b.sec] ||= []).push(b.idx);
+    const rec = store.json(key) || {};
+    delete rec.all;
+    delete rec.max;
+    rec.read = read;
+    rec.pct = Number(share(blocks).toFixed(3));
+    rec.t = Date.now();
+    store.set(key, JSON.stringify(rec));
+  }
+
+  // отметки: кружок у разделов в оглавлении и у заголовков; клик переключает «прочитано / нет»
+  const marks = []; // { button, list, title }
+  function markButton(list, title) {
+    const button = el("button", { type: "button", class: "read-mark" });
+    const m = { button, list, title };
+    button.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const done = isDone(share(list));
+      list.forEach((b) => { b.read = !done; b.acc = 0; });
+      persist();
+      renderRead();
+      toast(done ? "Отмечено непрочитанным" : "Отмечено прочитанным");
+    });
+    marks.push(m);
+    return button;
+  }
+
+  links.forEach((a, id) => {
+    const sec = document.getElementById(id);
+    const list = blocks.filter((b) => sec?.contains(b.el));
+    if (list.length) a.before(markButton(list, sectionTitle(sec)));
+  });
+  main.querySelectorAll("section[id] > h2, section[id] > h3").forEach((h) => {
+    const list = blocks.filter((b) => h.parentElement.contains(b.el));
+    if (list.length) h.append(markButton(list, sectionTitle(h.parentElement)));
+  });
+
+  function firstUnread() {
+    return blocks.find((b) => !b.read && visible(b.el));
+  }
+  const readingLine = () => innerHeight * 0.25;
+  const scrollToEl = (e, off = 0) => scrollTo({ top: e.getBoundingClientRect().top + scrollY + off - readingLine(), behavior: "auto" });
+
+  const allButton = el("button", { type: "button" });
+  toc.append(el("div", { class: "toc-actions" },
+    el("button", {
+      type: "button", text: "К непрочитанному",
+      onclick: () => {
+        const b = firstUnread();
+        togglePanel(tocPanel, false);
+        if (b) scrollToEl(b.el);
+        else toast("Всё прочитано");
+      },
+    }),
+    allButton));
+  allButton.addEventListener("click", () => {
+    const done = isDone(share(blocks));
+    blocks.forEach((b) => { b.read = !done; b.acc = 0; });
+    persist();
+    renderRead();
+    toast(done ? "Прогресс лекции сброшен" : "Лекция отмечена прочитанной");
+  });
+
   // ----- док внизу: наверх · осталось N мин · содержание -----
   const progressBar = el("div", { class: "progress", "aria-hidden": "true" }, el("span"));
   const toTop = el("button", {
@@ -488,54 +612,93 @@ function initLecture() {
   body.append(progressBar, dock);
 
   let remainingOff = store.get("remaining") === "off";
-  let reviewShare = 1; // доля текста, видимая в режиме «Быстро повторить»
   remaining.addEventListener("click", () => {
     remainingOff = !remainingOff;
     store.set("remaining", remainingOff ? "off" : null);
-    updateProgress();
+    renderRead();
   });
 
-  function progress() {
+  function progress() { // доля прокрутки — только для полосы сверху и места чтения
     const end = main.getBoundingClientRect().bottom + scrollY - innerHeight;
     return end > 0 ? clamp(scrollY / end, 0, 1) : 1;
   }
 
-  function updateProgress() {
-    const p = progress();
-    progressBar.firstChild.style.transform = `scaleX(${p})`;
-    ring.style.setProperty("--p", p);
-    const left = minutes * reviewShare * (1 - p);
-    const label = p > 0.985 ? "дочитано" : `~${Math.max(1, Math.ceil(left))} мин`;
+  function renderRead() {
+    for (const m of marks) {
+      const f = share(m.list);
+      m.button.classList.toggle("done", isDone(f));
+      m.button.classList.toggle("part", f > 0 && !isDone(f));
+      m.button.style.setProperty("--f", f.toFixed(3));
+      m.button.setAttribute("aria-label", `«${m.title}»: ${isDone(f) ? "прочитано" : f > 0 ? `прочитано ${Math.round(f * 100)}%` : "не прочитано"}. Нажмите, чтобы отметить ${isDone(f) ? "непрочитанным" : "прочитанным"}`);
+      m.button.title = isDone(f) ? "Прочитано · отметить непрочитанным" : "Отметить прочитанным";
+    }
+    const pct = share(blocks);
+    allButton.textContent = isDone(pct) ? "Сбросить прогресс" : "Отметить всё прочитанным";
+    ring.style.setProperty("--p", pct);
+    // в режиме повторения — сколько осталось из того, что показано
+    const unread = blocks.reduce((n, b) => n + (!b.read && (!doc.dataset.review || visible(b.el)) ? b.words : 0), 0);
+    const label = unread === 0 ? "прочитано" : `~${Math.max(1, Math.ceil(unread / WPM))} мин`;
     remainingText.textContent = label;
     remaining.classList.toggle("off", remainingOff);
     remaining.setAttribute("aria-label", remainingOff
       ? "Показать, сколько осталось читать"
-      : `Осталось ${label}. Нажмите, чтобы скрыть`);
+      : `Осталось ${label}, прочитано ${Math.round(pct * 100)}%. Нажмите, чтобы скрыть`);
+  }
+
+  function updateProgress() {
+    progressBar.firstChild.style.transform = `scaleX(${progress()})`;
     toTop.classList.toggle("show", !barHidden && scrollY > innerHeight * 1.5);
   }
   onScroll.push(updateProgress);
   addEventListener("resize", updateProgress);
   updateProgress();
+  if (saved.all) persist();
+  renderRead();
 
-  // ----- место чтения -----
-  const readingLine = () => innerHeight * 0.25;
-  const saved = store.json(key);
-  let maxRead = saved?.max || 0;
+  const inZone = new Set();
+  const zone = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      const b = byEl.get(e.target);
+      if (e.isIntersecting) inZone.add(b);
+      else inZone.delete(b);
+    }
+  }, { rootMargin: "-15% 0px -15% 0px" });
+  blocks.forEach((b) => zone.observe(b.el));
+
+  let lastActive = Date.now();
+  for (const type of ["scroll", "pointerdown", "keydown", "wheel", "touchstart"]) {
+    addEventListener(type, () => { lastActive = Date.now(); }, { passive: true });
+  }
+  setInterval(() => {
+    if (document.hidden || doc.dataset.review || body.classList.contains("no-scroll") || Date.now() - lastActive > 90000) return;
+    let changed = false;
+    for (const b of inZone) {
+      if (!b.read && (b.acc += 1000) >= b.need) {
+        b.read = true;
+        changed = true;
+      }
+    }
+    if (changed) {
+      persist();
+      renderRead();
+    }
+  }, 1000);
+
+  // ----- место чтения: раздел + смещение, чтобы предложить продолжить -----
   let moved = false;
   const startY = scrollY;
 
   function savePosition() {
     if (!moved) return;
-    const p = progress();
-    maxRead = Math.max(maxRead, p);
     const sec = sectionAt(allSections, readingLine());
-    store.set(key, JSON.stringify({
+    const rec = store.json(key) || {};
+    Object.assign(rec, {
       id: sec ? sec.id : "",
       off: Math.round(sec ? readingLine() - sec.getBoundingClientRect().top : scrollY),
-      p: Number(p.toFixed(3)),
-      max: Number(maxRead.toFixed(3)),
+      p: Number(progress().toFixed(3)),
       t: Date.now(),
-    }));
+    });
+    store.set(key, JSON.stringify(rec));
   }
   let saveTimer;
   onScroll.push(() => {
@@ -546,19 +709,25 @@ function initLecture() {
   addEventListener("pagehide", savePosition);
   document.addEventListener("visibilitychange", () => document.hidden && savePosition());
 
-  const savedSection = saved?.id ? document.getElementById(saved.id) : null;
-  if (!location.hash && saved && saved.p > 0.03 && saved.p < 0.97 && scrollY < 100 && (savedSection || !saved.id)) {
+  const savedSection = saved.id ? document.getElementById(saved.id) : null;
+  if (!location.hash && saved.p > 0.03 && !isDone(share(blocks)) && scrollY < 100 && (savedSection || !saved.id)) {
     const where = savedSection ? `с раздела «${sectionTitle(savedSection)}»` : "с места, где остановились";
+    const unread = firstUnread();
+    const unreadSection = unread?.el.closest("section[id]");
     const resume = el("div", { class: "resume", role: "status" },
-      el("span", { class: "resume-text", text: `Продолжить ${where}?` }),
+      el("span", { class: "resume-text" }, `Продолжить ${where}?`,
+        unread && unreadSection !== savedSection && !savedSection?.contains(unread.el)
+          ? el("button", {
+            type: "button", class: "resume-alt", text: "Или к первому непрочитанному",
+            onclick: () => { hideResume(); scrollToEl(unread.el); },
+          })
+          : ""),
       el("button", {
         type: "button", class: "resume-go", text: "Продолжить",
         onclick: () => {
           hideResume();
-          const top = savedSection
-            ? savedSection.getBoundingClientRect().top + scrollY + saved.off - readingLine()
-            : saved.off;
-          scrollTo({ top, behavior: "auto" });
+          if (savedSection) scrollToEl(savedSection, saved.off);
+          else scrollTo({ top: saved.off, behavior: "auto" });
         },
       }),
       el("button", { type: "button", class: "resume-close", "aria-label": "Закрыть", text: "×", onclick: () => hideResume() }));
@@ -591,13 +760,13 @@ function initLecture() {
       const sec = document.getElementById(id);
       a.parentElement.hidden = on && sec && !visible(sec);
     });
-    reviewShare = on ? main.innerText.length / main.textContent.length : 1;
     if (anchor) {
       const target = visible(anchor) ? anchor : sections.slice(sections.indexOf(anchor)).find(visible);
       target?.scrollIntoView();
     }
     updateActive();
     updateProgress();
+    renderRead();
   }
   reviewButton.addEventListener("click", () => setReview(!doc.dataset.review));
   reviewSwitch.addEventListener("click", () => setReview(!doc.dataset.review));
