@@ -7,7 +7,7 @@ const RUNTIME = "runtime"; // то же имя использует app.js, ко
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(SHELL)
-      .then((c) => c.addAll(["./", "assets/style.css", "assets/app.js", "search.json", "manifest.webmanifest"]))
+      .then((c) => c.addAll(["./", "assets/style.css", "assets/looks.css", "assets/app.js", "search.json", "manifest.webmanifest"]))
       .then(() => self.skipWaiting()),
   );
 });
@@ -58,6 +58,6 @@ self.addEventListener("fetch", (e) => {
   const url = new URL(req.url);
   if (req.method !== "GET" || !url.protocol.startsWith("http") || url.pathname.endsWith(".pdf")) return;
   const fresh = req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith(".html")
-    || url.pathname.endsWith("search.json") || url.pathname.endsWith("app.js") || url.pathname.endsWith("style.css");
+    || url.pathname.endsWith("search.json") || (url.origin === location.origin && /\.(js|css)$/.test(url.pathname));
   e.respondWith(fresh ? networkFirst(req) : staleWhileRevalidate(e));
 });

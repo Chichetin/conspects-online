@@ -1,0 +1,345 @@
+/* Оформления на выбор (меню «Aa»): html[data-look=…] ставит инлайн-скрипт в <head> до отрисовки.
+   Базовый style.css — запасной вид без JS. Каждое оформление задаёт светлые токены, затем тёмные
+   (явный выбор data-theme и системный в режиме «авто»), затем свои правила для компонентов. */
+
+/* =====================================================================
+   Учебник: параграфы §, строгие рамки, бордовый акцент, Spectral + Plex Condensed
+   ===================================================================== */
+:root[data-look="book"] {
+  --bg: #fffefb; --surface: #fffefb; --text: #1c1a17; --muted: #6f675d; --line: #e2ddd3;
+  --accent: #7b1e2c; --link: #8a2a35; --qa: #f7f4ee; --ok: #2f5e3e;
+  --shadow: none; --float: 0 6px 24px rgba(40, 20, 10, .14);
+  --body: "Spectral", Georgia, serif; --display: "Spectral", Georgia, serif;
+  --ui: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif;
+}
+:root[data-look="book"][data-theme="dark"] {
+  --bg: #1a1816; --surface: #1f1c1a; --text: #e9e3d8; --muted: #a39a8d; --line: #39342f;
+  --accent: #e3949d; --link: #eaa4ac; --qa: #24211e; --ok: #9ccaa8; --float: 0 6px 24px rgba(0, 0, 0, .5);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-look="book"]:not([data-theme]) {
+    --bg: #1a1816; --surface: #1f1c1a; --text: #e9e3d8; --muted: #a39a8d; --line: #39342f;
+    --accent: #e3949d; --link: #eaa4ac; --qa: #24211e; --ok: #9ccaa8; --float: 0 6px 24px rgba(0, 0, 0, .5);
+  }
+}
+:root[data-look="book"] body, :root[data-look="book"] .course, :root[data-look="book"] .continue { --c: var(--accent); }
+:root[data-look="book"] body { line-height: 1.7; }
+:root[data-look="book"] .site-bar { border-bottom-color: transparent; font: 500 .8rem var(--ui); letter-spacing: .1em; text-transform: uppercase; }
+:root[data-look="book"] .site-bar .brand::before { display: none; }
+:root[data-look="book"] .icon-btn.aa { text-transform: none; letter-spacing: 0; }
+:root[data-look="book"] h1 { font-weight: 600; letter-spacing: 0; }
+:root[data-look="book"] main h2 {
+  font: 700 1rem/1.4 var(--ui); text-transform: uppercase; letter-spacing: .09em;
+  padding-bottom: .4rem; border-bottom: 1px solid var(--text);
+}
+:root[data-look="book"] h2 .header-section-number {
+  display: block; background: none; height: auto; min-width: 0; padding: 0; margin: 0 0 .2rem;
+  font: 600 2rem/1 var(--display); letter-spacing: 0; text-align: left;
+}
+:root[data-look="book"] h2 .header-section-number::before { content: "§ "; }
+:root[data-look="book"] main h3 { font: 600 1.15rem/1.3 var(--display); }
+:root[data-look="book"] .kicker { font: 500 .78rem var(--ui); letter-spacing: .12em; color: var(--muted); }
+:root[data-look="book"] .lecture-head { border-bottom: 3px double var(--text); }
+:root[data-look="book"] .pdf, :root[data-look="book"] .review-toggle, :root[data-look="book"] .resume-go { border-radius: 2px; }
+:root[data-look="book"] .secmeta { font: italic .9rem var(--body); text-align: right; }
+:root[data-look="book"] .secmeta .tc { background: none; color: var(--muted); font-weight: 400; padding: 0; }
+:root[data-look="book"] .box { background: none; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; padding: .3rem 0; }
+:root[data-look="book"] .box-abstract { border: 1px solid var(--text); position: relative; padding: 1rem 1.2rem .3rem; margin-top: 2.2rem; }
+:root[data-look="book"] .box-abstract .box-title {
+  position: absolute; top: -.75em; left: .8rem; margin: 0; padding: 0 .45rem; background: var(--bg);
+  font: 500 .75rem var(--ui); letter-spacing: .12em; color: var(--text);
+}
+:root[data-look="book"] .box-emphasis { border-color: var(--accent); }
+:root[data-look="book"] figure { border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; padding: .8rem 0 .6rem; }
+:root[data-look="book"] figure img { border-radius: 0; }
+:root[data-look="book"] figcaption { font: italic .9rem/1.4 var(--body); }
+:root[data-look="book"] a.gl { text-decoration: none; color: var(--accent); border-bottom: 1px dotted var(--accent); }
+:root[data-look="book"] .lectmark { background: none; padding: 0; font: 600 1em var(--body); font-variant: small-caps; letter-spacing: .03em; }
+:root[data-look="book"] details.qa { background: none; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; }
+:root[data-look="book"] details.qa summary { padding: .6rem 0; font: 500 .8rem var(--ui); letter-spacing: .1em; text-transform: uppercase; }
+:root[data-look="book"] details.qa summary::before { display: none; }
+:root[data-look="book"] .qa-body { padding: 0 0 .3rem; }
+:root[data-look="book"] th { background: none; border-bottom: 1px solid var(--text); }
+:root[data-look="book"] .pager a { border-radius: 0; border-width: 1px 0; background: none; }
+:root[data-look="book"] .toc a.active { background: none; }
+:root[data-look="book"] .dock-btn, :root[data-look="book"] .toc-button { border-radius: 3px; }
+:root[data-look="book"] .panel, :root[data-look="book"] .pop, :root[data-look="book"] .resume, :root[data-look="book"] .search-panel { border-radius: 4px; }
+:root[data-look="book"] .course { background: none; box-shadow: none; border-top: 0; padding: 0; }
+:root[data-look="book"] .course h2, :root[data-look="book"] .list-page h1 { font-weight: 600; }
+:root[data-look="book"] .course h2 { border-bottom: 1px solid var(--text); padding-bottom: .4rem; }
+:root[data-look="book"] .lectures .num { font: italic .85rem var(--body); letter-spacing: 0; }
+:root[data-look="book"] .lectures .t { font: 400 1.12rem/1.35 var(--display); }
+:root[data-look="book"] .list-page > main > .lectures { background: none; box-shadow: none; padding: 0; }
+:root[data-look="book"] .search-field, :root[data-look="book"] .continue { border-radius: 2px; box-shadow: none; }
+
+/* =====================================================================
+   Терминал: редактор кода, моноширинные заголовки, тёмный по умолчанию в «авто»
+   ===================================================================== */
+:root[data-look="term"] {
+  --bg: #0d1117; --surface: #161b22; --text: #c9d1d9; --muted: #8b949e; --line: #30363d;
+  --accent: #ffa657; --link: #79c0ff; --qa: #161b22; --ok: #7ee787;
+  --shadow: none; --float: 0 8px 28px rgba(0, 0, 0, .6); --img-filter: brightness(.9);
+  --tint-mix: 14%; --tint-strong-mix: 26%; --c-lift: 30%; --on-c: #0d1117;
+  --body: "Onest", system-ui, sans-serif; --display: "JetBrains Mono", ui-monospace, monospace;
+  --ui: "JetBrains Mono", ui-monospace, monospace;
+  color-scheme: dark;
+}
+:root[data-look="term"][data-theme="light"] {
+  --bg: #ffffff; --surface: #f6f8fa; --text: #1f2328; --muted: #59636e; --line: #d1d9e0;
+  --accent: #bc4c00; --link: #0969da; --qa: #f6f8fa; --ok: #1a7f37;
+  --float: 0 8px 28px rgba(31, 35, 40, .15); --img-filter: none;
+  --tint-mix: 9%; --tint-strong-mix: 18%; --c-lift: 0%; --on-c: #ffffff;
+  color-scheme: light;
+}
+:root[data-look="term"] body { font-size: 1.06rem; }
+:root[data-look="term"] .site-bar .brand::before { content: "❯"; width: auto; height: auto; background: none; color: var(--ok); }
+:root[data-look="term"] h1 { font-size: 1.75rem; letter-spacing: -.02em; }
+:root[data-look="term"] .lecture-head h1::before, :root[data-look="term"] .list-page h1::before { content: "# "; color: var(--c); }
+:root[data-look="term"] main h2 { font-size: 1.2rem; }
+:root[data-look="term"] main h3 { font-size: 1.02rem; }
+:root[data-look="term"] h2 .header-section-number { display: inline; background: none; min-width: 0; height: auto; padding: 0; margin-right: .6em; font-size: 1em; vertical-align: 0; }
+:root[data-look="term"] h2 .header-section-number::before { content: "## "; }
+:root[data-look="term"] h3 .header-section-number::before { content: "### "; color: var(--muted); }
+:root[data-look="term"] .kicker { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+:root[data-look="term"] .kicker::before { content: "~/"; color: var(--c); }
+:root[data-look="term"] .pdf, :root[data-look="term"] .review-toggle, :root[data-look="term"] .resume-go { border-radius: 4px; font-weight: 400; }
+:root[data-look="term"] .secmeta .tc { background: none; color: var(--ok); padding: 0; }
+:root[data-look="term"] .secmeta .tc::before { content: "["; }
+:root[data-look="term"] .secmeta .tc::after { content: "]"; }
+:root[data-look="term"] .box { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; }
+:root[data-look="term"] .box-title { text-transform: none; letter-spacing: 0; font-weight: 400; color: var(--muted); }
+:root[data-look="term"] .box-title::before { content: "/* "; }
+:root[data-look="term"] .box-title::after { content: " */"; }
+:root[data-look="term"] .box-keypoints { border-left: 3px solid var(--ok); }
+:root[data-look="term"] .box-emphasis { border-left: 3px solid var(--accent); }
+:root[data-look="term"] figure { border-radius: 6px; }
+:root[data-look="term"] a.gl { color: var(--link); text-decoration-color: var(--link); }
+:root[data-look="term"] .lectmark { background: none; padding: 0; font: 400 .85em var(--ui); }
+:root[data-look="term"] .lectmark::before { content: "// "; }
+:root[data-look="term"] details.qa { border-radius: 6px; }
+:root[data-look="term"] details.qa summary { font-weight: 400; }
+:root[data-look="term"] details.qa summary::before { content: "$"; background: none; width: auto; color: var(--ok); }
+:root[data-look="term"] .katex { color: color-mix(in srgb, var(--text) 80%, #d2a8ff); }
+:root[data-look="term"] .pager a, :root[data-look="term"] .dock-btn, :root[data-look="term"] .toc-button { border-radius: 6px; font-weight: 400; }
+:root[data-look="term"] .panel, :root[data-look="term"] .pop, :root[data-look="term"] .resume, :root[data-look="term"] .search-panel, :root[data-look="term"] .continue { border-radius: 6px; }
+:root[data-look="term"] .toc a.active { font-weight: 400; }
+:root[data-look="term"] .course { border-top: 1px solid var(--line); border: 1px solid var(--line); border-radius: 6px; box-shadow: none; }
+:root[data-look="term"] .course h2 a::before { content: "~/"; color: var(--c); }
+:root[data-look="term"] .course h2 { font-size: 1.15rem; }
+:root[data-look="term"] .lectures li + li a { border-top: 0; }
+:root[data-look="term"] .lectures a { padding: .55rem 0 .55rem 1.6rem; }
+:root[data-look="term"] .lectures a::before { content: "├─"; position: absolute; left: 0; top: .55rem; color: var(--muted); font: .9rem/1.6 var(--ui); }
+:root[data-look="term"] .lectures li:last-child a::before { content: "└─"; }
+:root[data-look="term"] .lectures .t { font-family: var(--body); font-weight: 600; }
+:root[data-look="term"] .search-field { border-radius: 6px; box-shadow: none; }
+
+/* =====================================================================
+   Журнал: обложка лекции цветом курса, крупные номера, Unbounded + Onest
+   ===================================================================== */
+:root[data-look="mag"] {
+  --bg: #ffffff; --surface: #f2f4fa; --text: #121212; --muted: #5d616d; --line: #e5e7ee;
+  --accent: #d13b2a; --link: #1d3fbf; --qa: #f2f4fa; --ok: #1f7a4a; --hi: #ffd84a;
+  --shadow: none; --float: 0 10px 30px rgba(0, 0, 0, .18);
+  --body: "Onest", system-ui, sans-serif; --display: "Unbounded", "Arial Black", sans-serif; --ui: "Onest", system-ui, sans-serif;
+}
+:root[data-look="mag"][data-theme="dark"] {
+  --bg: #111216; --surface: #1b1d24; --text: #ececf0; --muted: #a0a3ad; --line: #2b2e37;
+  --accent: #ff7a6b; --link: #9db4ff; --qa: #1b1d24; --ok: #7fd3a3; --hi: #e9c53c; --float: 0 10px 30px rgba(0, 0, 0, .6);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-look="mag"]:not([data-theme]) {
+    --bg: #111216; --surface: #1b1d24; --text: #ececf0; --muted: #a0a3ad; --line: #2b2e37;
+    --accent: #ff7a6b; --link: #9db4ff; --qa: #1b1d24; --ok: #7fd3a3; --hi: #e9c53c; --float: 0 10px 30px rgba(0, 0, 0, .6);
+  }
+}
+:root[data-look="mag"] body { line-height: 1.6; }
+:root[data-look="mag"] .site-bar .brand { font: 800 .85rem var(--display); text-transform: uppercase; }
+:root[data-look="mag"] .site-bar .brand::before { border-radius: 0; }
+:root[data-look="mag"] h1 { font-weight: 800; line-height: 1.1; letter-spacing: -.01em; }
+:root[data-look="mag"] .lecture-head {
+  position: relative; overflow: hidden; margin: 0 -16px 2rem; padding: 2.6rem 16px 1.8rem;
+  background: var(--course); color: #fff; border: 0;
+}
+:root[data-look="mag"] .lecture-head::after {
+  content: attr(data-num); position: absolute; right: -.1em; top: -.32em; pointer-events: none;
+  font: 800 11rem/1 var(--display); color: transparent; -webkit-text-stroke: 2px rgba(255, 255, 255, .3);
+}
+:root[data-look="mag"] .lecture-head > * { position: relative; z-index: 1; }
+:root[data-look="mag"] .lecture-head .kicker { color: var(--hi); }
+:root[data-look="mag"] .lecture-head .byline, :root[data-look="mag"] .lecture-head .meta-line { color: rgba(255, 255, 255, .82); }
+:root[data-look="mag"] .lecture-head .pdf { background: #fff; color: var(--course); border-color: #fff; border-radius: 0; }
+:root[data-look="mag"] .lecture-head .review-toggle { color: #fff; border-color: #fff; border-radius: 0; }
+:root[data-look="mag"] .lecture-head .review-toggle[aria-pressed="true"] { background: #fff; color: var(--course); }
+@media (min-width: 700px) { :root[data-look="mag"] .lecture-head { margin: 2rem 0 2.4rem; padding: 3rem 2rem 2rem; } }
+:root[data-look="mag"] main h2 { font-weight: 800; font-size: 1.3rem; line-height: 1.25; }
+:root[data-look="mag"] main h3 { font: 600 1.12rem/1.3 var(--display); }
+:root[data-look="mag"] h2 .header-section-number {
+  display: block; background: none; height: auto; min-width: 0; padding: 0; margin: 0 0 .3rem;
+  font-size: 2.2em; line-height: 1; text-align: left; color: var(--c);
+}
+:root[data-look="mag"] .secmeta .tc { background: var(--text); color: var(--bg); border-radius: 0; }
+:root[data-look="mag"] .box { border: 0; border-left: 6px solid var(--c); border-radius: 0; background: var(--surface); }
+:root[data-look="mag"] .box-abstract { background: none; border: 0; padding: 0; font-size: 1.12em; font-weight: 600; line-height: 1.5; }
+:root[data-look="mag"] .box-abstract .box-title { display: inline-block; background: var(--hi); color: #121212; padding: .1rem .45rem; }
+:root[data-look="mag"] .box-keypoints { border-left-color: var(--ok); }
+:root[data-look="mag"] .box-emphasis { border-left-color: var(--accent); }
+:root[data-look="mag"] a.gl { text-decoration: none; background: color-mix(in srgb, var(--hi) 55%, transparent); padding: 0 .12em; border-radius: 2px; }
+:root[data-look="mag"] .lectmark { display: block; width: max-content; background: none; padding: 0; margin-bottom: .1rem; color: var(--c); font: 800 .7rem var(--display); text-transform: uppercase; letter-spacing: .04em; }
+:root[data-look="mag"] div.rv:has(.lectmark) { font-weight: 600; font-size: 1.06em; border-left: 4px solid var(--hi); padding-left: 1rem; }
+:root[data-look="mag"] figure { border: 0; border-radius: 0; box-shadow: none; background: var(--surface); margin-inline: -16px; padding: 1rem 16px; }
+@media (min-width: 700px) { :root[data-look="mag"] figure { margin-inline: 0; } }
+:root[data-look="mag"] details.qa { border: 0; border-radius: 0; background: var(--surface); }
+:root[data-look="mag"] details.qa summary { background: var(--text); color: var(--bg); }
+:root[data-look="mag"] details.qa summary::before { background: var(--hi); color: #121212; }
+:root[data-look="mag"] .pdf, :root[data-look="mag"] .review-toggle, :root[data-look="mag"] .resume-go, :root[data-look="mag"] .pager a,
+:root[data-look="mag"] .dock-btn, :root[data-look="mag"] .toc-button { border-radius: 0; }
+:root[data-look="mag"] .toc-button { background: var(--text); color: var(--bg); }
+:root[data-look="mag"] .panel, :root[data-look="mag"] .pop, :root[data-look="mag"] .resume, :root[data-look="mag"] .search-panel, :root[data-look="mag"] .continue { border-radius: 0; }
+:root[data-look="mag"] .list-page h1 { font-size: 2.3rem; }
+:root[data-look="mag"] .course { padding: 0; border: 0; border-radius: 0; overflow: hidden; background: var(--surface); box-shadow: none; }
+:root[data-look="mag"] .course h2 { margin: 0; padding: 1.1rem 1.2rem; background: var(--course); color: #fff; font-weight: 800; }
+:root[data-look="mag"] .course h2 a:hover { color: #fff; }
+:root[data-look="mag"] .course .count { color: rgba(255, 255, 255, .8); }
+:root[data-look="mag"] .course .lectures { padding: 0 1.2rem; }
+:root[data-look="mag"] .lectures .t { font-weight: 800; font-family: var(--display); font-size: 1rem; }
+:root[data-look="mag"] .list-page > main > .lectures { border-radius: 0; box-shadow: none; background: var(--surface); }
+:root[data-look="mag"] .search-field { border-radius: 0; box-shadow: none; border: 2px solid var(--text); }
+
+/* =====================================================================
+   Швейцарский: жёсткая сетка, толстые линейки, красный, Golos Text
+   ===================================================================== */
+:root[data-look="swiss"] {
+  --bg: #ffffff; --surface: #ffffff; --text: #0a0a0a; --muted: #555555; --line: #d6d6d6; --rule: #0a0a0a;
+  --accent: #e2001a; --link: #0a0a0a; --qa: #ffffff; --ok: #0a0a0a; --red: #e2001a;
+  --shadow: none; --float: 0 0 0 2px var(--rule);
+  --body: "Golos Text", "Helvetica Neue", Arial, sans-serif; --display: var(--body); --ui: var(--body);
+}
+:root[data-look="swiss"][data-theme="dark"] {
+  --bg: #0b0b0b; --surface: #0b0b0b; --text: #f2f2f2; --muted: #a8a8a8; --line: #333333; --rule: #f2f2f2;
+  --accent: #ff3347; --link: #f2f2f2; --qa: #0b0b0b; --ok: #f2f2f2; --red: #ff3347;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-look="swiss"]:not([data-theme]) {
+    --bg: #0b0b0b; --surface: #0b0b0b; --text: #f2f2f2; --muted: #a8a8a8; --line: #333333; --rule: #f2f2f2;
+    --accent: #ff3347; --link: #f2f2f2; --qa: #0b0b0b; --ok: #f2f2f2; --red: #ff3347;
+  }
+}
+:root[data-look="swiss"] body, :root[data-look="swiss"] .course, :root[data-look="swiss"] .continue { --c: var(--red); --tint: color-mix(in srgb, var(--red) 10%, var(--bg)); }
+:root[data-look="swiss"] body { font-size: 1.06rem; line-height: 1.6; }
+:root[data-look="swiss"] a { text-decoration-thickness: 2px; text-decoration-color: var(--red); }
+:root[data-look="swiss"] .site-bar { border-bottom: 3px solid var(--rule); background: var(--bg); backdrop-filter: none; }
+:root[data-look="swiss"] .site-bar .brand { text-transform: uppercase; font-weight: 800; letter-spacing: .02em; }
+:root[data-look="swiss"] .site-bar .brand::before { background: var(--red); border-radius: 0; }
+:root[data-look="swiss"] h1 { font-weight: 800; font-size: 2.6rem; line-height: 1; letter-spacing: -.035em; }
+:root[data-look="swiss"] .kicker { color: var(--red); }
+:root[data-look="swiss"] .lecture-head { border-bottom: 3px solid var(--rule); }
+:root[data-look="swiss"] main section.level2 { border-top: 3px solid var(--rule); margin-top: 3rem; padding-top: .7rem; }
+:root[data-look="swiss"] main section.level2 > h2 { margin-top: 0; }
+/* номер раздела — в одной строке с заголовком, без отдельной колонки */
+:root[data-look="swiss"] main h2 { display: flex; align-items: flex-start; gap: .55rem; font-weight: 800; font-size: 1.5rem; line-height: 1.1; letter-spacing: -.02em; }
+:root[data-look="swiss"] h2 .header-section-number {
+  display: block; flex: none; background: none; height: auto; min-width: 0; padding: 0; margin: 0;
+  color: var(--red); font-size: 1.6em; line-height: .78; letter-spacing: -.04em;
+}
+:root[data-look="swiss"] main h3 { font-weight: 800; letter-spacing: -.01em; }
+:root[data-look="swiss"] h3 .header-section-number { color: var(--red); }
+:root[data-look="swiss"] .secmeta { font: 600 .72rem var(--ui); text-transform: uppercase; letter-spacing: .06em; }
+:root[data-look="swiss"] .secmeta .tc { background: var(--rule); color: var(--bg); border-radius: 0; }
+:root[data-look="swiss"] .box { background: none; border: 0; border-top: 3px solid var(--rule); border-radius: 0; padding: .5rem 0 .1rem; }
+:root[data-look="swiss"] .box-abstract { font-weight: 600; font-size: 1.05em; }
+:root[data-look="swiss"] .box-title { color: var(--text); }
+:root[data-look="swiss"] .box-emphasis { border-top-color: var(--red); }
+:root[data-look="swiss"] a.gl { text-decoration: none; border-bottom: 2px solid var(--red); font-weight: 600; }
+:root[data-look="swiss"] .lectmark { background: var(--red); color: #fff; border-radius: 0; text-transform: uppercase; font-size: .68rem; letter-spacing: .06em; padding: .15em .4em; vertical-align: .1em; }
+:root[data-look="swiss"] figure { border: 0; border-radius: 0; box-shadow: none; padding: 0; background: none; }
+:root[data-look="swiss"] figure img { border-radius: 0; }
+:root[data-look="swiss"] figcaption { text-align: left; font-weight: 600; }
+:root[data-look="swiss"] th { background: none; border-bottom: 2px solid var(--rule); }
+:root[data-look="swiss"] details.qa { background: none; border: 0; border-top: 1px solid var(--rule); border-radius: 0; }
+:root[data-look="swiss"] details.qa summary { padding: .6rem 0; color: var(--text); text-transform: uppercase; font-size: .75rem; letter-spacing: .06em; }
+:root[data-look="swiss"] details.qa summary::before { display: none; }
+:root[data-look="swiss"] details.qa summary::after { content: "+"; font-size: 1.2rem; }
+:root[data-look="swiss"] details.qa[open] summary::after { content: "−"; transform: none; }
+:root[data-look="swiss"] .qa-body { padding: 0 0 .3rem; }
+:root[data-look="swiss"] .pdf, :root[data-look="swiss"] .resume-go { border-radius: 0; background: var(--rule); border-color: var(--rule); color: var(--bg); }
+:root[data-look="swiss"] .review-toggle { border-radius: 0; border-color: var(--rule); color: var(--text); }
+:root[data-look="swiss"] .review-toggle[aria-pressed="true"] { background: var(--red); border-color: var(--red); color: #fff; }
+:root[data-look="swiss"] .pager a { border-radius: 0; border: 0; border-top: 3px solid var(--rule); background: none; }
+:root[data-look="swiss"] .dock-btn { border-radius: 0; background: var(--rule); color: var(--bg); border-color: var(--rule); box-shadow: none; }
+:root[data-look="swiss"] .toc-button { border-radius: 0; box-shadow: none; }
+:root[data-look="swiss"] .dock .ring { background: conic-gradient(var(--red) calc(var(--p, 0) * 1turn), #777 0); }
+:root[data-look="swiss"] .toc a { border-left-width: 3px; }
+:root[data-look="swiss"] .toc a.active { background: none; color: var(--text); }
+:root[data-look="swiss"] .panel, :root[data-look="swiss"] .pop, :root[data-look="swiss"] .resume, :root[data-look="swiss"] .search-panel { border-radius: 0; border: 2px solid var(--rule); }
+:root[data-look="swiss"] .list-page h1 { font-size: 2.8rem; }
+:root[data-look="swiss"] .course { background: none; box-shadow: none; border-radius: 0; border-top: 3px solid var(--rule); padding: 0; }
+:root[data-look="swiss"] .course h2 { font-weight: 800; letter-spacing: -.02em; }
+:root[data-look="swiss"] .lectures a { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: .8rem; }
+:root[data-look="swiss"] .lectures a::before { content: attr(data-n); grid-row: 1 / 3; color: var(--red); font: 800 1.9rem/1 var(--display); letter-spacing: -.04em; }
+:root[data-look="swiss"] .lectures li + li a { border-top-color: var(--line); }
+:root[data-look="swiss"] .lectures .t { font-weight: 800; }
+:root[data-look="swiss"] .list-page > main > .lectures { background: none; box-shadow: none; border-radius: 0; padding: 0; border-top: 3px solid var(--rule); }
+:root[data-look="swiss"] .search-field { border-radius: 0; box-shadow: none; border: 2px solid var(--rule); }
+:root[data-look="swiss"] .continue { border-radius: 0; box-shadow: none; }
+
+/* =====================================================================
+   Карточки: как мобильное приложение, разделы — карточки, Manrope + Onest
+   ===================================================================== */
+:root[data-look="cards"] {
+  --bg: #edf0f5; --surface: #ffffff; --text: #1b1f27; --muted: #687080; --line: #e3e7ee;
+  --accent: #d1453b; --link: #2a62b0; --qa: #f3f5f9; --ok: #2e7d4f;
+  --shadow: 0 1px 2px rgba(20, 30, 50, .06); --float: 0 12px 36px rgba(20, 30, 50, .18);
+  --body: "Onest", system-ui, sans-serif; --display: "Manrope", system-ui, sans-serif; --ui: "Onest", system-ui, sans-serif;
+}
+:root[data-look="cards"][data-theme="dark"] {
+  --bg: #0f1217; --surface: #1a1e26; --text: #e6e9ef; --muted: #8c94a3; --line: #2a303b;
+  --accent: #ff7b70; --link: #8fb6ec; --qa: #222733; --ok: #7cc79b; --shadow: none; --float: 0 12px 36px rgba(0, 0, 0, .6);
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-look="cards"]:not([data-theme]) {
+    --bg: #0f1217; --surface: #1a1e26; --text: #e6e9ef; --muted: #8c94a3; --line: #2a303b;
+    --accent: #ff7b70; --link: #8fb6ec; --qa: #222733; --ok: #7cc79b; --shadow: none; --float: 0 12px 36px rgba(0, 0, 0, .6);
+  }
+}
+:root[data-look="cards"] body { font-size: 1.04rem; line-height: 1.6; }
+:root[data-look="cards"] .site-bar { border-bottom: 0; }
+:root[data-look="cards"] .site-bar .brand::before { border-radius: 50%; }
+:root[data-look="cards"] h1, :root[data-look="cards"] main h2, :root[data-look="cards"] main h3 { font-weight: 800; letter-spacing: -.01em; }
+:root[data-look="cards"] .lecture-head { background: var(--surface); border: 0; border-radius: 22px; padding: 1.3rem 1.2rem; margin: 1.2rem -6px 1rem; box-shadow: var(--shadow); }
+:root[data-look="cards"] .byline > span { background: var(--bg); border-radius: 999px; padding: .05rem .7rem; color: var(--text); font-size: .9rem; }
+:root[data-look="cards"] main > section.level2, :root[data-look="cards"] main > section.footnotes {
+  background: var(--surface); border-radius: 22px; padding: .1rem 1.2rem 1rem; margin: 1rem -6px; box-shadow: var(--shadow);
+}
+:root[data-look="cards"] main > section.level2 > h2 { margin-top: 1.1rem; }
+:root[data-look="cards"] .footnotes hr { display: none; }
+:root[data-look="cards"] h2 .header-section-number { border-radius: 999px; font-size: .62em; height: 1.9em; padding: 0 .75em; vertical-align: .25em; }
+:root[data-look="cards"] .secmeta .tc { border-radius: 999px; padding: .15em .6em; }
+:root[data-look="cards"] .box { border: 0; border-radius: 16px; }
+:root[data-look="cards"] .box-abstract { background: var(--c); color: var(--on-c); border-radius: 22px; margin: 1rem -6px; padding: .4rem 1.2rem .2rem; }
+:root[data-look="cards"] .box-abstract .box-title { color: inherit; opacity: .75; }
+:root[data-look="cards"] .box-abstract a { color: inherit; }
+:root[data-look="cards"] a.gl { text-decoration: none; background: var(--tint); color: var(--c); border-radius: 6px; padding: 0 .25em; font-weight: 600; }
+:root[data-look="cards"] .box-abstract a.gl { background: color-mix(in srgb, var(--on-c) 18%, transparent); color: inherit; }
+:root[data-look="cards"] .lectmark { background: var(--accent); color: var(--on-c); border-radius: 999px; padding: .1em .6em; }
+:root[data-look="cards"] figure { background: var(--qa); border: 0; border-radius: 16px; box-shadow: none; }
+:root[data-look="cards"] figure img { border-radius: 10px; }
+:root[data-look="cards"] details.qa { border: 0; border-radius: 16px; }
+:root[data-look="cards"] details.qa summary::before { background: var(--surface); }
+:root[data-look="cards"] table { border-radius: 12px; }
+:root[data-look="cards"] .pager a { border: 0; border-radius: 18px; box-shadow: var(--shadow); }
+:root[data-look="cards"] .dock-btn { border-radius: 16px; border: 0; box-shadow: 0 6px 18px rgba(20, 30, 50, .16); }
+:root[data-look="cards"] .toc-button { border-radius: 16px; }
+:root[data-look="cards"] .toc, :root[data-look="cards"] .panel, :root[data-look="cards"] .pop, :root[data-look="cards"] .resume, :root[data-look="cards"] .search-panel { border-radius: 22px; }
+:root[data-look="cards"] .pop.sheet { border-radius: 22px 22px 0 0; }
+:root[data-look="cards"] .toc a { border-left: 0; border-radius: 10px; }
+:root[data-look="cards"] .course { border-top: 0; border-radius: 22px; box-shadow: var(--shadow); }
+:root[data-look="cards"] .course h2::before {
+  content: ""; display: inline-block; flex: none; width: .7rem; height: .7rem; border-radius: 50%; background: var(--c); margin-right: -.4rem; align-self: center;
+}
+:root[data-look="cards"] .course h2 a { margin-right: auto; }
+:root[data-look="cards"] .lectures li + li a { border-top: 0; }
+:root[data-look="cards"] .lectures a { background: var(--qa); border-radius: 14px; padding: .7rem .9rem; margin: .5rem 0; overflow: hidden; }
+:root[data-look="cards"] .lectures .read-some::after { bottom: 0; height: 3px; border-radius: 0; }
+:root[data-look="cards"] .list-page > main > .lectures { background: none; box-shadow: none; padding: 0; }
+:root[data-look="cards"] .search-field { border: 0; border-radius: 16px; }
+:root[data-look="cards"] .continue { border-radius: 22px; padding: 1rem 1.2rem; }

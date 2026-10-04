@@ -132,6 +132,22 @@ bar.append(el("div", { class: "bar-tools" }, searchButton, settingsButton));
 
 const FONT_STEPS = ["-1", "0", "1", "2"];
 const THEMES = [["auto", "Авто"], ["light", "Светлая"], ["dark", "Тёмная"]];
+// оформления из looks.css; превью «Аа» рисуется шрифтом и цветами самого оформления
+const LOOKS = [
+  { id: "book", name: "Учебник", font: "Spectral:wght@600", family: "Spectral, serif", bg: "#fffefb", fg: "#1c1a17", accent: "#7b1e2c", radius: "2px" },
+  { id: "term", name: "Терминал", font: "JetBrains+Mono:wght@700", family: "'JetBrains Mono', monospace", bg: "#0d1117", fg: "#c9d1d9", accent: "#7ee787", radius: "6px" },
+  { id: "mag", name: "Журнал", font: "Unbounded:wght@800", family: "Unbounded, sans-serif", bg: "#1d3fbf", fg: "#ffffff", accent: "#ffd84a", radius: "0" },
+  { id: "swiss", name: "Швейцарский", font: "Golos+Text:wght@800", family: "'Golos Text', sans-serif", bg: "#ffffff", fg: "#0a0a0a", accent: "#e2001a", radius: "0" },
+  { id: "cards", name: "Карточки", font: "Manrope:wght@800", family: "Manrope, sans-serif", bg: "#edf0f5", fg: "#1b1f27", accent: "#2f6db5", radius: "14px" },
+];
+
+function setLook(id) {
+  doc.dataset.look = id;
+  store.set("look", id);
+  const fonts = document.getElementById("look-fonts");
+  if (fonts && window.LOOK_FONTS?.[id]) fonts.href = LOOK_FONTS[id];
+  renderSettings();
+}
 
 function setPref(key, value, fallback) {
   if (value === fallback) delete doc.dataset[key];
@@ -145,9 +161,14 @@ const fontPlus = el("button", { type: "button", "aria-label": "Крупнее", 
 const fontLevel = el("span", { class: "fs-level" });
 const themeButtons = THEMES.map(([value, label]) =>
   el("button", { type: "button", text: label, onclick: () => setPref("theme", value, "auto"), "data-value": value }));
+const lookButtons = LOOKS.map((l) => el("button", {
+  type: "button", class: "look", "data-value": l.id, onclick: () => setLook(l.id),
+  style: `--l-bg: ${l.bg}; --l-fg: ${l.fg}; --l-accent: ${l.accent}; --l-font: ${l.family}; --l-radius: ${l.radius}`,
+}, el("span", { class: "look-aa", text: "Аа" }), el("span", { class: "look-name", text: l.name })));
 const reviewSwitch = el("button", { type: "button", class: "switch", role: "switch", "aria-checked": "false" });
 
 const settings = el("div", { class: "panel settings", id: "settings", role: "dialog", "aria-label": "Настройки чтения" },
+  el("div", { class: "set-block" }, el("span", { text: "Оформление" }), el("div", { class: "looks" }, ...lookButtons)),
   el("div", { class: "set-row" }, el("span", { text: "Размер текста" }),
     el("div", { class: "seg" }, fontMinus, fontLevel, fontPlus)),
   el("div", { class: "set-row" }, el("span", { text: "Тема" }), el("div", { class: "seg" }, ...themeButtons)),
@@ -157,6 +178,14 @@ if (isLecture) {
 }
 body.append(settings);
 addPanel(settings, settingsButton);
+settingsButton.addEventListener("click", () => {
+  // для превью нужны только буквы «Аа» каждого шрифта — это несколько килобайт
+  if (document.getElementById("look-previews")) return;
+  document.head.append(el("link", {
+    rel: "stylesheet", id: "look-previews",
+    href: `https://fonts.googleapis.com/css2?${LOOKS.map((l) => `family=${l.font}`).join("&")}&text=${encodeURIComponent("Аа")}&display=swap`,
+  }));
+});
 
 function stepFont(delta) {
   const i = clamp(FONT_STEPS.indexOf(doc.dataset.fs || "0") + delta, 0, FONT_STEPS.length - 1);
@@ -172,6 +201,7 @@ function renderSettings() {
   fontPlus.disabled = i === FONT_STEPS.length - 1;
   const theme = doc.dataset.theme || "auto";
   themeButtons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.value === theme)));
+  lookButtons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.value === doc.dataset.look)));
 }
 renderSettings();
 
@@ -344,9 +374,11 @@ document.addEventListener("keydown", (e) => {
 const posKey = (path) => `pos:${path}`;
 
 if (!isLecture) {
-  // на главной и на странице курса — отметки о прочитанном
+  // на главной и на странице курса — отметки о прочитанном и «Продолжить» для последней начатой лекции
+  let last = null;
   document.querySelectorAll(".lectures a").forEach((a) => {
     const saved = store.json(posKey(pagePath(a.href)));
+    if (saved?.t && saved.p > 0.03 && saved.p < 0.97 && (!last || saved.t > last.saved.t)) last = { a, saved };
     const max = saved?.max || 0;
     if (max < 0.02) return;
     const done = max >= 0.97;
@@ -354,6 +386,15 @@ if (!isLecture) {
     a.classList.add(done ? "read-done" : "read-some");
     a.querySelector(".num").append(el("span", { class: "read", text: done ? "прочитано" : `прочитано ${Math.round(max * 100)}%` }));
   });
+  const anchor = document.querySelector(".search-field") || document.querySelector(".list-page h1");
+  if (last && anchor) {
+    const course = last.a.closest(".course");
+    anchor.after(el("a", {
+      class: "continue", href: last.a.href,
+      style: course ? course.getAttribute("style") : "",
+    }, el("span", { class: "ring", style: `--p: ${last.saved.p}` }),
+    el("span", {}, "Продолжить чтение", el("b", { text: last.a.querySelector(".t").textContent }))));
+  }
 }
 
 // ---------- service worker: офлайн-доступ ----------
@@ -493,6 +534,7 @@ function initLecture() {
       off: Math.round(sec ? readingLine() - sec.getBoundingClientRect().top : scrollY),
       p: Number(p.toFixed(3)),
       max: Number(maxRead.toFixed(3)),
+      t: Date.now(),
     }));
   }
   let saveTimer;

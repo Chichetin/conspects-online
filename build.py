@@ -18,8 +18,28 @@ ROOT = Path(__file__).resolve().parent
 CONTENT = ROOT / "content"
 SITE = ROOT / "site"
 OUT = ROOT / "_site"
-FONTS = ("https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700"
-         "&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap")
+GF = "https://fonts.googleapis.com/css2?"
+FONTS = GF + "family=PT+Sans:wght@400;700&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap"
+ONEST = "family=Onest:wght@400;600;700"
+# Оформления (см. site/looks.css) и их шрифты; грузятся только шрифты выбранного. Первое — по умолчанию.
+LOOK_FONTS = {
+    "book": "family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans+Condensed:wght@500;700",
+    "term": f"family=JetBrains+Mono:wght@400;700&{ONEST}",
+    "mag": f"family=Unbounded:wght@500;800&{ONEST}",
+    "swiss": "family=Golos+Text:wght@400;600;800",
+    "cards": f"family=Manrope:wght@600;800&{ONEST}",
+}
+
+
+def look_script() -> str:
+    fonts = json.dumps({k: f"{GF}{v}&display=swap" for k, v in LOOK_FONTS.items()})
+    return ("window.LOOK_FONTS=" + fonts + ";(function(){var d=document.documentElement,s={};"
+            "try{s=localStorage}catch(e){}"
+            "function g(k){try{return s.getItem(k)}catch(e){return null}}"
+            '["theme","fs","review"].forEach(function(k){var v=g(k);if(v)d.dataset[k]=v});'
+            f'var l=g("look");if(!LOOK_FONTS[l])l="{next(iter(LOOK_FONTS))}";d.dataset.look=l;'
+            'var f=document.createElement("link");f.rel="stylesheet";f.href=LOOK_FONTS[l];f.id="look-fonts";'
+            "document.head.appendChild(f)})()")
 
 
 def head(root: str) -> str:
@@ -27,14 +47,15 @@ def head(root: str) -> str:
     return f"""<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#2f6db5">
-<script>try{{var d=document.documentElement,s=localStorage;["theme","fs","review"].forEach(function(k){{var v=s.getItem(k);if(v)d.dataset[k]=v}})}}catch(e){{}}</script>
+<script>{look_script()}</script>
 <link rel="manifest" href="{root}manifest.webmanifest">
 <link rel="icon" href="{root}assets/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="{root}assets/icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="{FONTS}">
+<noscript><link rel="stylesheet" href="{FONTS}"></noscript>
 <link rel="stylesheet" href="{root}assets/style.css">
+<link rel="stylesheet" href="{root}assets/looks.css">
 <script defer src="{root}assets/app.js"></script>"""
 
 
@@ -81,7 +102,7 @@ def meta(l: dict) -> str:
 
 def lecture_list(lectures: list[dict], prefix: str) -> str:
     items = "\n".join(
-        f'<li><a href="{prefix}{l["num"]}/">'
+        f'<li><a href="{prefix}{l["num"]}/" data-n="{l["num"]:02d}">'
         f'<span class="num">{meta(l)}</span>'
         f'<span class="t">{html.escape(l["title"])}</span>'
         "</a></li>"
@@ -101,7 +122,7 @@ def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) 
         "--toc", "--toc-depth=2",
         "-V", "root=../../", "-V", f"course-slug={course['slug']}",
         "-V", f"course-title={course['title']}", "-V", f"course-color={course.get('color', '')}",
-        "-V", f"reading={lec['reading']}", "-V", f"minutes={lec['minutes']}",
+        "-V", f"reading={lec['reading']}", "-V", f"minutes={lec['minutes']}", "-V", f"num={lec['num']:02d}",
         "-V", f"head={head('../../')}",
         "-o", str(dst / "index.html"),
     ]
@@ -218,7 +239,7 @@ def main() -> None:
     if OUT.exists():
         shutil.rmtree(OUT)
     (OUT / "assets").mkdir(parents=True)
-    for f in ("style.css", "app.js"):
+    for f in ("style.css", "looks.css", "app.js"):
         shutil.copy2(SITE / f, OUT / "assets" / f)
 
     sections, search = [], {"lectures": [], "sections": []}
