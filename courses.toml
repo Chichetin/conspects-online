@@ -1,0 +1,10 @@
+# Префикс папки лекции в text-extractor/lectures → курс на сайте.
+# Порядок курсов здесь = порядок на главной странице.
+
+[courses.r]
+slug = "recsys"
+title = "Рекомендательные системы"
+
+[courses.p]
+slug = "product-analytics"
+title = "Продуктовая аналитика"

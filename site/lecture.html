@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>$lecture$. $title$ — $course-title$</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+<link rel="stylesheet" href="$root$assets/style.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+<script defer src="$root$assets/app.js"></script>
+</head>
+<body class="lecture-page">
+<nav class="crumbs"><a href="$root$">Конспекты</a> / <a href="$root$$course-slug$/">$course-title$</a></nav>
+
+<div class="layout">
+<aside class="toc" id="toc">
+<div class="toc-title">Содержание</div>
+$table-of-contents$
+</aside>
+
+<main>
+<header class="lecture-head">
+<p class="kicker">$course-title$ · $lecture$</p>
+<h1>$title$</h1>
+<p class="byline">$if(lecturer)$$lecturer$$endif$$if(pdf)$ · <a class="pdf" href="conspect.pdf">PDF</a>$endif$</p>
+$if(meta-line)$<p class="meta-line">$meta-line$</p>$endif$
+</header>
+
+$body$
+
+<nav class="pager">
+$if(prev-href)$<a class="prev" href="$prev-href$"><span>← Предыдущая</span>$prev-title$</a>$else$<span></span>$endif$
+$if(next-href)$<a class="next" href="$next-href$"><span>Следующая →</span>$next-title$</a>$endif$
+</nav>
+</main>
+</div>
+
+<button class="toc-button" id="toc-button" aria-controls="toc" aria-expanded="false">Содержание</button>
+</body>
+</html>
