@@ -5,8 +5,10 @@
 --   *Таймкод: ЧЧ:ММ:СС · слайды …*            -> p.secmeta
 --   [^n]: Примечание составителя: …           -> сноска с меткой «Прим. составителя»
 --   **Акцент лектора:** / **Важный вывод:** / **Важно:** -> span.lectmark
---   [текст]{.gl key="Термин"}                 -> ссылка на строку глоссария с подсказкой
+--   [текст]{.gl key="Термин"}                 -> ссылка на строку глоссария (определение покажет app.js)
 --   картинки                                  -> loading="lazy"
+-- Класс rv помечает то, что остаётся в режиме «Быстро повторить»: итоговые разделы, глоссарий,
+-- аннотацию и выделенные блоки, абзацы с метками лектора и с выносными формулами.
 
 local function html(s) return pandoc.RawBlock('html', s) end
 
@@ -31,13 +33,41 @@ local function Div(el)
         table.insert(el.content, 1, html('<div class="box-title">' .. escape(title) .. '</div>'))
       end
       el.attributes.title = nil
-      el.classes = { 'box', 'box-' .. c }
+      el.classes = pandoc.List { 'box', 'box-' .. c }
+      if c ~= 'watch' and c ~= 'plan' then el.classes:insert('rv') end
       return el
     end
   end
 end
 
+local labels = { ['Акцент лектора:'] = true, ['Важный вывод:'] = true, ['Важно:'] = true }
+
+local function is_key(inlines)
+  local found = false
+  inlines:walk {
+    -- к этому моменту Strong с меткой уже стал span.lectmark (inline-фильтры идут раньше блочных)
+    Span = function(s) if s.classes:includes('lectmark') then found = true end end,
+    Math = function(m) if m.mathtype == 'DisplayMath' then found = true end end,
+  }
+  return found
+end
+
+local review_sections = { ['Главное из лекции'] = true, ['Что подчеркнул лектор'] = true, ['Глоссарий'] = true }
+
+local function Header(el)
+  if el.level == 2 and review_sections[pandoc.utils.stringify(el)] then
+    el.classes:insert('rv')
+    return el
+  end
+end
+
+local function mark_key(el)
+  if is_key(el.content) then return pandoc.Div({ el }, pandoc.Attr('', { 'rv' })) end
+end
+
 local function Para(el)
+  local key = mark_key(el)
+  if key then return key end
   if #el.content == 1 and el.content[1].t == 'Emph' then
     local txt = pandoc.utils.stringify(el.content[1])
     local tc, rest = txt:match('^Таймкод:%s*([%d:–%-]+)%s*·%s*(.*)$')
@@ -46,8 +76,6 @@ local function Para(el)
     end
   end
 end
-
-local labels = { ['Акцент лектора:'] = true, ['Важный вывод:'] = true, ['Важно:'] = true }
 
 local function Strong(el)
   local s = pandoc.utils.stringify(el)
@@ -94,7 +122,7 @@ local function in_glossary(blocks, i)
 end
 
 function Pandoc(doc)
-  local gloss = {}  -- нормализованный термин -> { id, определение }
+  local gloss = {}  -- нормализованный термин -> { id }
   local n = 0
   for i, b in ipairs(doc.blocks) do
     if b.t == 'Table' and in_glossary(doc.blocks, i) then
@@ -105,8 +133,7 @@ function Pandoc(doc)
             n = n + 1
             local id = 'gl-' .. n
             local term = pandoc.utils.stringify(cells[1].contents)
-            local def = pandoc.utils.stringify(cells[2].contents)
-            local entry = { id = id, def = term .. ' — ' .. def }
+            local entry = { id = id }
             gloss[norm(term)] = entry
             for alt in term:gmatch('%((.-)%)') do gloss[norm(alt)] = gloss[norm(alt)] or entry end
             for alt in (term:gsub('%b()', '') .. '/'):gmatch('([^/]+)/') do
@@ -124,9 +151,9 @@ function Pandoc(doc)
       if not el.classes:includes('gl') then return nil end
       local e = gloss[norm(el.attributes.key or pandoc.utils.stringify(el))]
       if not e then return el.content end
-      return pandoc.Link(el.content, '#' .. e.id, '', pandoc.Attr('', { 'gl' }, { { 'data-def', e.def } }))
+      return pandoc.Link(el.content, '#' .. e.id, '', pandoc.Attr('', { 'gl' }))
     end,
   }
 
-  return doc:walk { Div = Div, Para = Para, Strong = Strong, Note = Note, Image = Image }
+  return doc:walk { Div = Div, Header = Header, Para = Para, Plain = mark_key, Strong = Strong, Note = Note, Image = Image }
 end

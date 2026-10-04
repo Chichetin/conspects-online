@@ -2,18 +2,12 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="robots" content="noindex, nofollow">
 <title>$lecture$. $title$ — $course-title$</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
-<link rel="stylesheet" href="$root$assets/style.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
-<script defer src="$root$assets/app.js"></script>
+$head$
 </head>
-<body class="lecture-page"$if(course-color)$ style="--course: $course-color$"$endif$>
+<body class="lecture-page" data-minutes="$minutes$"$if(course-color)$ style="--course: $course-color$"$endif$>
 <header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a></header>
 
 <div class="layout">
@@ -26,7 +20,7 @@ $table-of-contents$
 <header class="lecture-head">
 <p class="kicker"><a href="$root$$course-slug$/">$course-title$</a> · $lecture$</p>
 <h1>$title$</h1>
-<p class="byline">$if(lecturer)$<span>$lecturer$</span>$endif$<span>$reading$</span>$if(pdf)$<a class="pdf" href="conspect.pdf">Скачать PDF</a>$endif$</p>
+<p class="byline">$if(lecturer)$<span>$lecturer$</span>$endif$<span>$reading$</span>$if(pdf)$<a class="pdf" href="conspect.pdf">Скачать PDF</a>$endif$<button class="review-toggle" id="review-toggle" type="button" hidden>Быстро повторить</button></p>
 $if(meta-line)$<p class="meta-line">$meta-line$</p>$endif$
 </header>
 
