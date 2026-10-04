@@ -15,14 +15,36 @@ ROOT = Path(__file__).resolve().parent
 CONTENT = ROOT / "content"
 SITE = ROOT / "site"
 OUT = ROOT / "_site"
+FONTS = ("https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700"
+         "&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap")
 
 
-def frontmatter(md: Path, key: str) -> str:
-    m = re.search(rf'^{key}:\s*"?(.*?)"?\s*$', md.read_text().split("\n---", 1)[0], re.M)
-    return m[1] if m else ""
+def read_lecture(d: Path) -> dict:
+    text = (d / "summary.md").read_text()
+    head = text.split("\n---", 1)[0]
+
+    def field(key: str) -> str:
+        m = re.search(rf'^{key}:\s*"?(.*?)"?\s*$', head, re.M)
+        return m[1] if m else ""
+
+    abstract = re.search(r"^::: \{\.abstract[^}]*\}\n(.+?)\n", text, re.M)
+    teaser = ""
+    if abstract:  # первые предложения аннотации, не короче 80 символов
+        for sentence in re.split(r"(?<=[.!?])\s", abstract[1]):
+            teaser = f"{teaser} {sentence}".strip()
+            if len(teaser) >= 80:
+                break
+    duration = re.search(r"Запись\s+([\d:]+)", field("meta-line"))
+    words = len(re.findall(r"\w+", text))
+    return {
+        "num": int(d.name), "dir": d, "title": field("title"), "teaser": teaser,
+        "duration": duration[1] if duration else "",
+        "reading": f"{max(1, round(words / 180))} мин чтения",
+    }
 
 
-def page(title: str, root: str, body: str) -> str:
+def page(title: str, root: str, body: str, color: str = "") -> str:
+    style = f' style="--course: {color}"' if color else ""
     return f"""<!doctype html>
 <html lang="ru">
 <head>
@@ -32,10 +54,11 @@ def page(title: str, root: str, body: str) -> str:
 <title>{html.escape(title)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&family=PT+Serif:ital,wght@0,400;0,700;1,400&display=swap">
+<link rel="stylesheet" href="{FONTS}">
 <link rel="stylesheet" href="{root}assets/style.css">
 </head>
-<body class="list-page">
+<body class="list-page"{style}>
+<header class="site-bar"><a class="brand" href="{root}">Конспекты</a></header>
 <main>
 {body}
 </main>
@@ -44,10 +67,18 @@ def page(title: str, root: str, body: str) -> str:
 """
 
 
+def meta(l: dict) -> str:
+    parts = [f"Лекция {l['num']}"] + ([f"запись {l['duration']}"] if l["duration"] else []) + [l["reading"]]
+    return " · ".join(parts)
+
+
 def lecture_list(lectures: list[dict], prefix: str) -> str:
     items = "\n".join(
-        f'<li><a href="{prefix}{l["num"]}/"><span class="num">Лекция {l["num"]}</span>'
-        f'{html.escape(l["title"])}</a></li>'
+        f'<li><a href="{prefix}{l["num"]}/">'
+        f'<span class="num">{meta(l)}</span>'
+        f'<span class="t">{html.escape(l["title"])}</span>'
+        + (f'<span class="teaser">{html.escape(l["teaser"])}</span>' if l["teaser"] else "")
+        + "</a></li>"
         for l in lectures
     )
     return f'<ol class="lectures">\n{items}\n</ol>'
@@ -62,8 +93,9 @@ def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) 
         "--lua-filter", str(SITE / "conspect.lua"),
         "--katex", "--section-divs", "--number-sections",
         "--toc", "--toc-depth=2",
-        "-V", f"root=../../", "-V", f"course-slug={course['slug']}",
-        "-V", f"course-title={course['title']}",
+        "-V", "root=../../", "-V", f"course-slug={course['slug']}",
+        "-V", f"course-title={course['title']}", "-V", f"course-color={course.get('color', '')}",
+        "-V", f"reading={lec['reading']}",
         "-o", str(dst / "index.html"),
     ]
     if (src / "conspect.pdf").exists():
@@ -87,7 +119,7 @@ def main() -> None:
         cdir = CONTENT / course["slug"]
         dirs = sorted((d for d in cdir.iterdir() if (d / "summary.md").exists()), key=lambda d: int(d.name)) \
             if cdir.exists() else []
-        lectures = [{"num": int(d.name), "dir": d, "title": frontmatter(d / "summary.md", "title")} for d in dirs]
+        lectures = [read_lecture(d) for d in dirs]
         if not lectures:
             continue
         for i, lec in enumerate(lectures):
@@ -96,11 +128,14 @@ def main() -> None:
             print(f"{course['slug']}/{lec['num']}")
 
         title = html.escape(course["title"])
+        color = course.get("color", "")
+        count = f"{len(lectures)} {'лекция' if len(lectures) == 1 else 'лекции' if len(lectures) < 5 else 'лекций'}"
         (OUT / course["slug"] / "index.html").write_text(page(course["title"], "../", f"""
-<nav class="crumbs"><a href="../">Конспекты</a></nav>
+<p class="kicker">Курс · {count}</p>
 <h1>{title}</h1>
-{lecture_list(lectures, "")}"""))
-        sections.append(f'<section class="course">\n<h2><a href="{course["slug"]}/">{title}</a></h2>\n'
+{lecture_list(lectures, "")}""", color))
+        sections.append(f'<section class="course" style="--course: {color}">\n'
+                        f'<h2><a href="{course["slug"]}/">{title}</a><span class="count">{count}</span></h2>\n'
                         f'{lecture_list(lectures, course["slug"] + "/")}\n</section>')
 
     (OUT / "index.html").write_text(page("Конспекты лекций", "", f"""
