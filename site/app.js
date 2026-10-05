@@ -318,7 +318,7 @@ async function renderResults() {
   if (query !== searchInput.value) return; // пока грузилось, запрос поменялся
   const res = runSearch(data, query);
   if (!res) {
-    searchResults.innerHTML = '<p class="search-hint">Ищет по тексту всех лекций. Например: <i>NDCG</i>, <i>retention</i>, <i>A/B-тест</i>.</p>';
+    searchResults.innerHTML = '<p class="search-hint">Ищет по тексту всех лекций и лабораторных. Например: <i>NDCG</i>, <i>retention</i>, <i>A/B-тест</i>.</p>';
     return;
   }
   if (!res.items.length) {
@@ -513,7 +513,7 @@ function initLecture() {
   const blocks = candidates
     .filter((e) => ![...e.querySelectorAll(BLOCK)].some((x) => candidateSet.has(x))) // самые вложенные
     .map((e) => {
-      const words = e.matches("figure") ? 15 : (e.textContent.match(/\S+/g) || []).length;
+      const words = e.matches("figure, pre.mermaid") ? 15 : (e.textContent.match(/\S+/g) || []).length;
       const sec = e.closest("section[id]")?.id || "";
       const idx = perSection.get(sec) || 0;
       perSection.set(sec, idx + 1);

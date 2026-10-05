@@ -1,4 +1,4 @@
-# Префикс папки лекции в text-extractor/lectures → курс на сайте.
+# Префикс папки в text-extractor (lectures/ или labs/) → курс на сайте: <префикс><N> — лекция, <префикс>_lab<N> — лабораторная.
 # Порядок курсов здесь = порядок на главной странице; color — акцентный цвет курса.
 
 [courses.r]
@@ -10,3 +10,8 @@ color = "#2f6db5"
 slug = "product-analytics"
 title = "Продуктовая аналитика"
 color = "#c0632b"
+
+[courses.web]
+slug = "web"
+title = "Веб-программирование"
+color = "#2b8a6e"

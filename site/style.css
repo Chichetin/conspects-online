@@ -8,6 +8,11 @@
   --link: #1f5aa6;
   --course: #2f6db5;
   --qa: #f2f1ee;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --code-bg: #f4f2ee;
+  --bad: #a33a3a;
+  --good: #3d7a5a;
+  --hl-kw: #8a3ab0; --hl-st: #2e7d4f; --hl-co: #8a877f; --hl-nu: #b0561c; --hl-fu: #1f5aa6; --hl-ty: #a0611b;
   --ok: #2e7d4f;
   --shadow: 0 1px 2px rgba(0, 0, 0, .04), 0 4px 16px rgba(0, 0, 0, .05);
   --float: 0 8px 32px rgba(0, 0, 0, .2);
@@ -37,6 +42,10 @@
   --c-lift: 25%;
   --on-c: #15161a;
   --qa: #1f1f23;
+  --code-bg: #1a1a1e;
+  --bad: #e08a8a;
+  --good: #7cc79b;
+  --hl-kw: #c99be6; --hl-st: #95cf9f; --hl-co: #7d7b76; --hl-nu: #e6a372; --hl-fu: #8fb6ec; --hl-ty: #e3c07f;
   --ok: #7cc79b;
   --shadow: 0 1px 2px rgba(0, 0, 0, .3);
   --float: 0 8px 32px rgba(0, 0, 0, .6);
@@ -58,6 +67,10 @@
     --on-c: #15161a;
   --on-c: #15161a;
     --qa: #1f1f23;
+    --code-bg: #1a1a1e;
+    --bad: #e08a8a;
+    --good: #7cc79b;
+    --hl-kw: #c99be6; --hl-st: #95cf9f; --hl-co: #7d7b76; --hl-nu: #e6a372; --hl-fu: #8fb6ec; --hl-ty: #e3c07f;
     --ok: #7cc79b;
     --shadow: 0 1px 2px rgba(0, 0, 0, .3);
     --float: 0 8px 32px rgba(0, 0, 0, .6);
@@ -277,6 +290,55 @@ th { font-family: var(--ui); background: var(--tint); }
 .box-emphasis { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
 .box ul { padding-left: 1.2rem; }
 .box li { margin: .4rem 0; }
+
+/* ---------- учебники к лабораторным: плашки, код, схемы ---------- */
+.box-abstract { border-left-color: var(--c); }
+.box-note { border-left-color: var(--link); background: color-mix(in srgb, var(--link) 7%, var(--bg)); }
+.box-note .box-title { color: var(--link); }
+.box-warning { border-left-color: var(--hl-nu); background: color-mix(in srgb, var(--hl-nu) 8%, var(--bg)); }
+.box-warning .box-title { color: var(--hl-nu); }
+.box-caution { border-left-color: var(--accent); background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
+.box-caution .box-title { color: var(--accent); }
+.box-tip { border-left-color: var(--ok); background: color-mix(in srgb, var(--ok) 8%, var(--bg)); }
+.box-tip .box-title { color: var(--ok); }
+
+code { font: .86em var(--mono); font-variant-ligatures: none; background: var(--code-bg); border-radius: 4px; padding: .08em .3em; overflow-wrap: anywhere; }
+pre, div.sourceCode { margin: 1.1rem 0; }
+pre {
+  font: .8rem/1.55 var(--mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px;
+  padding: .75rem .9rem; overflow-x: auto; tab-size: 4;
+}
+td code, th code { overflow-wrap: normal; white-space: nowrap; }
+pre code { font: inherit; background: none; padding: 0; overflow-wrap: normal; }
+div.sourceCode pre { margin: 0; }
+.box pre { background: color-mix(in srgb, var(--code-bg) 70%, var(--surface)); }
+code span.kw, code span.cf, code span.im { color: var(--hl-kw); }
+code span.st, code span.ss, code span.ch, code span.vs, code span.sc { color: var(--hl-st); }
+code span.co, code span.do, code span.an, code span.cv, code span.in { color: var(--hl-co); font-style: italic; }
+code span.dv, code span.fl, code span.bn, code span.cn, code span.bu { color: var(--hl-nu); }
+code span.fu, code span.at { color: var(--hl-fu); }
+code span.dt, code span.ex, code span.pp { color: var(--hl-ty); }
+code span.al, code span.er { color: var(--bad); font-weight: 700; }
+
+.verdict { font: 700 .8rem var(--ui); text-transform: uppercase; letter-spacing: .06em; margin: 1.2rem 0 -.6rem; }
+.verdict.bad { color: var(--bad); }
+.verdict.good { color: var(--good); }
+.verdict.bad + div.sourceCode pre, .verdict.bad + pre { border-left: 4px solid var(--bad); }
+.verdict.good + div.sourceCode pre, .verdict.good + pre { border-left: 4px solid var(--good); }
+.fileref p { font: .82rem var(--ui); color: var(--muted); margin-bottom: -.6rem; }
+
+/* схема: до отрисовки (и без сети) — исходник, после — SVG на светлой подложке в обеих темах */
+pre.mermaid { white-space: pre; text-align: center; margin-top: 1.6rem; }
+pre.mermaid[data-processed] {
+  font: 1rem var(--ui); white-space: normal; background: #fff; border-color: var(--line);
+  padding: 1rem .6rem; filter: var(--img-filter); box-shadow: var(--shadow);
+}
+pre.mermaid svg { width: 100%; height: auto; fill: initial; stroke: initial; stroke-width: initial; stroke-linecap: initial; stroke-linejoin: initial; }  /* не как иконки */
+.diagram-caption p { font: .85rem/1.45 var(--ui); color: var(--muted); margin-top: -.4rem; }
+.diagram-caption em { font-style: normal; }
+
+.pdf.pdf-off { background: none; color: var(--muted); border: 1px dashed var(--line); cursor: default; font-weight: 400; }
+.pdf.pdf-off:hover { filter: none; }
 
 .lectmark {
   font-family: var(--ui); font-weight: 700; font-size: .85em; color: var(--accent);

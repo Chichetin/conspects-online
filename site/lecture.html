@@ -2,12 +2,18 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<title>$lecture$. $title$ — $course-title$</title>
+<title>$label$. $title$ — $course-title$</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
 <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
 $head$
+$if(mermaid)$<script type="module">
+// Схемы Mermaid (учебники к лабораторным). Без сети остаётся исходный текст схемы.
+import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+mermaid.initialize({ startOnLoad: false, theme: "neutral", fontFamily: "PT Sans, Arial, sans-serif" });
+await mermaid.run({ querySelector: "pre.mermaid" });
+</script>$endif$
 </head>
-<body class="lecture-page" data-minutes="$minutes$"$if(course-color)$ style="--course: $course-color$"$endif$>
+<body class="lecture-page$if(kind)$ kind-$kind$$endif$" data-minutes="$minutes$"$if(course-color)$ style="--course: $course-color$"$endif$>
 <header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a></header>
 
 <div class="layout">
@@ -18,9 +24,9 @@ $table-of-contents$
 
 <main>
 <header class="lecture-head" data-num="$num$">
-<p class="kicker"><a href="$root$$course-slug$/">$course-title$</a> · $lecture$</p>
+<p class="kicker"><a href="$root$$course-slug$/">$course-title$</a> · $label$</p>
 <h1>$title$</h1>
-<p class="byline">$if(lecturer)$<span>$lecturer$</span>$endif$<span>$reading$</span>$if(pdf)$<a class="pdf" href="conspect.pdf">Скачать PDF</a>$endif$<button class="review-toggle" id="review-toggle" type="button" hidden>Быстро повторить</button></p>
+<p class="byline">$if(lecturer)$<span>$lecturer$</span>$endif$<span>$reading$</span>$if(pdf)$<a class="pdf" href="conspect.pdf">Скачать PDF</a>$else$<span class="pdf pdf-off">PDF пока недоступен</span>$endif$<button class="review-toggle" id="review-toggle" type="button" hidden>Быстро повторить</button></p>
 $if(meta-line)$<p class="meta-line">$meta-line$</p>$endif$
 </header>
 

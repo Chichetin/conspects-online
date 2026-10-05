@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Собирает сайт из content/ в _site/: страницы лекций (pandoc), страницы курсов и главную.
+"""Собирает сайт из content/ в _site/: страницы лекций и лабораторных (pandoc), страницы курсов и главную.
+
+Папка content/<курс>/<N>/ — лекция, content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab).
 
     python build.py
     python -m http.server -d _site   # предпросмотр
@@ -69,8 +71,11 @@ def read_lecture(d: Path) -> dict:
 
     duration = re.search(r"Запись\s+([\d:]+)", field("meta-line"))
     minutes = max(1, round(len(re.findall(r"\w+", text)) / 180))
+    lab, num = re.fullmatch(r"(lab)?(\d+)", d.name).groups()
+    kind = "lab" if lab else "lecture"
+    label = field(kind) or f"{'Лабораторная работа' if lab else 'Лекция'} {num}"
     return {
-        "num": int(d.name), "dir": d, "title": field("title"),
+        "num": int(num), "kind": kind, "label": label, "dir": d, "title": field("title"),
         "duration": duration[1] if duration else "",
         "minutes": minutes, "reading": f"{minutes} мин чтения",
     }
@@ -96,13 +101,13 @@ def page(title: str, root: str, body: str, color: str = "") -> str:
 
 
 def meta(l: dict) -> str:
-    parts = [f"Лекция {l['num']}"] + ([f"запись {l['duration']}"] if l["duration"] else []) + [l["reading"]]
+    parts = [l["label"]] + ([f"запись {l['duration']}"] if l["duration"] else []) + [l["reading"]]
     return " · ".join(parts)
 
 
 def lecture_list(lectures: list[dict], prefix: str) -> str:
     items = "\n".join(
-        f'<li><a href="{prefix}{l["num"]}/" data-n="{l["num"]:02d}">'
+        f'<li><a href="{prefix}{l["dir"].name}/" data-n="{l["num"]:02d}">'
         f'<span class="num">{meta(l)}</span>'
         f'<span class="t">{html.escape(l["title"])}</span>'
         "</a></li>"
@@ -111,8 +116,25 @@ def lecture_list(lectures: list[dict], prefix: str) -> str:
     return f'<ol class="lectures">\n{items}\n</ol>'
 
 
+def src_name(lec: dict) -> str:
+    return lec["dir"].name
+
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    form = one if n % 10 == 1 and n % 100 != 11 else few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many
+    return f"{n} {form}"
+
+
+def count_label(lectures: list[dict]) -> str:
+    n_lec = sum(l["kind"] == "lecture" for l in lectures)
+    n_lab = len(lectures) - n_lec
+    parts = ([plural(n_lec, "лекция", "лекции", "лекций")] if n_lec else []) + \
+            ([plural(n_lab, "лабораторная", "лабораторные", "лабораторных")] if n_lab else [])
+    return " · ".join(parts)
+
+
 def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) -> None:
-    src, dst = lec["dir"], OUT / course["slug"] / str(lec["num"])
+    src, dst = lec["dir"], OUT / course["slug"] / src_name(lec)
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns("summary.md"))
     args = [
         "pandoc", str(src / "summary.md"), "-f", "markdown", "-t", "html5",
@@ -122,15 +144,17 @@ def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) 
         "--toc", "--toc-depth=2",
         "-V", "root=../../", "-V", f"course-slug={course['slug']}",
         "-V", f"course-title={course['title']}", "-V", f"course-color={course.get('color', '')}",
-        "-V", f"reading={lec['reading']}", "-V", f"minutes={lec['minutes']}", "-V", f"num={lec['num']:02d}",
+        "-V", f"label={lec['label']}", "-V", f"kind={lec['kind']}", "-V", f"reading={lec['reading']}", "-V", f"minutes={lec['minutes']}", "-V", f"num={lec['num']:02d}",
         "-V", f"head={head('../../')}",
         "-o", str(dst / "index.html"),
     ]
     if (src / "conspect.pdf").exists():
         args += ["-V", "pdf=1"]
+    if "```mermaid" in (src / "summary.md").read_text():
+        args += ["-V", "mermaid=1"]
     for name, other in (("prev", prev), ("next", nxt)):
         if other:
-            args += ["-V", f"{name}-href=../{other['num']}/", "-V", f"{name}-title={other['title']}"]
+            args += ["-V", f"{name}-href=../{src_name(other)}/", "-V", f"{name}-title={other['title']}"]
     subprocess.run(args, check=True)
 
 
@@ -159,6 +183,7 @@ class SectionText(HTMLParser):
         self.stack: list[dict | None] = []  # открытые <section>: раздел для поиска или None
         self.in_main = self.skip = self.in_h = 0
         self.math: list[str] | None = None  # текст текущей формулы
+        self.in_mermaid = False  # исходник схемы — не текст
 
     def current(self) -> dict:
         return next((s for s in reversed(self.stack) if s), self.sections[0])
@@ -179,6 +204,9 @@ class SectionText(HTMLParser):
             self.in_h += 1
         elif tag == "span" and "math" in (a.get("class") or "").split():
             self.math = []
+        elif tag == "pre" and "mermaid" in (a.get("class") or "").split():
+            self.skip += 1
+            self.in_mermaid = True
 
     def handle_endtag(self, tag):
         if tag == "main":
@@ -189,6 +217,9 @@ class SectionText(HTMLParser):
             self.stack.pop()
         elif tag in ("h2", "h3") and self.in_h:
             self.in_h -= 1
+        elif tag == "pre" and self.in_mermaid:
+            self.skip -= 1
+            self.in_mermaid = False
         elif tag == "span" and self.math is not None:
             tex, self.math = "".join(self.math), None
             self.handle_data(f" {plain_tex(tex)} ")
@@ -245,24 +276,24 @@ def main() -> None:
     sections, search = [], {"lectures": [], "sections": []}
     for course in courses:
         cdir = CONTENT / course["slug"]
-        dirs = sorted((d for d in cdir.iterdir() if (d / "summary.md").exists()), key=lambda d: int(d.name)) \
-            if cdir.exists() else []
-        lectures = [read_lecture(d) for d in dirs]
+        dirs = [d for d in cdir.iterdir() if (d / "summary.md").exists()] if cdir.exists() else []
+        # сначала лекции, потом лабораторные, внутри — по номеру
+        lectures = sorted((read_lecture(d) for d in dirs), key=lambda l: (l["kind"] == "lab", l["num"]))
         if not lectures:
             continue
         for i, lec in enumerate(lectures):
             build_lecture(course, lec, lectures[i - 1] if i else None,
                           lectures[i + 1] if i + 1 < len(lectures) else None)
-            print(f"{course['slug']}/{lec['num']}")
-            search["lectures"].append([f"{course['slug']}/{lec['num']}/", course["title"],
-                                       f"Лекция {lec['num']}. {lec['title']}"])
+            path = f"{course['slug']}/{src_name(lec)}"
+            print(path)
+            search["lectures"].append([f"{path}/", course["title"], f"{lec['label']}. {lec['title']}"])
             li = len(search["lectures"]) - 1
-            page_html = OUT / course["slug"] / str(lec["num"]) / "index.html"
+            page_html = OUT / path / "index.html"
             search["sections"] += [[li, *sec] for sec in section_index(page_html)]
 
         title = html.escape(course["title"])
         color = course.get("color", "")
-        count = f"{len(lectures)} {'лекция' if len(lectures) == 1 else 'лекции' if len(lectures) < 5 else 'лекций'}"
+        count = count_label(lectures)
         (OUT / course["slug"] / "index.html").write_text(page(course["title"], "../", f"""
 <p class="kicker">Курс · {count}</p>
 <h1>{title}</h1>
@@ -273,7 +304,8 @@ def main() -> None:
 
     (OUT / "index.html").write_text(page("Конспекты лекций", "", f"""
 <h1>Конспекты лекций</h1>
-<p class="lead">Конспекты по записям лекций: текст вместо видео, схемы со слайдов, таймкоды и глоссарий.</p>
+<p class="lead">Конспекты по записям лекций: текст вместо видео, схемы со слайдов, таймкоды и глоссарий.
+Учебники к защите лабораторных: по разделу на каждый вопрос.</p>
 {"".join(sections)}"""))
     (OUT / "search.json").write_text(json.dumps(search, ensure_ascii=False, separators=(",", ":")))
     write_pwa()

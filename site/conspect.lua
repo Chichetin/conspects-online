@@ -7,10 +7,23 @@
 --   **Акцент лектора:** / **Важный вывод:** / **Важно:** -> span.lectmark
 --   [текст]{.gl key="Термин"}                 -> ссылка на строку глоссария (определение покажет app.js)
 --   картинки                                  -> loading="lazy"
+-- Учебники к лабораторным (doc-kind: lab, text-extractor/.claude/lab/primer.md):
+--   вступление до первого раздела             -> div.box «О работе»
+--   ## Вопрос N. Формулировка.                -> якорь qN, без «Вопрос N.» (номер ставит --number-sections)
+--   > [!NOTE] / [!WARNING] / [!CAUTION] / [!TIP] + **Заголовок** -> div.box-<тип> с заголовком
+--   ```mermaid + *Схема: …*                    -> pre.mermaid (рисует mermaid.js) и подпись
+--   **Плохо:** / **Хорошо:** перед кодом      -> p.verdict, рамка у следующего блока кода
+--   Файл: `путь`, строки …                    -> p.fileref
 -- Класс rv помечает то, что остаётся в режиме «Быстро повторить»: итоговые разделы, глоссарий,
--- аннотацию и выделенные блоки, абзацы с метками лектора и с выносными формулами.
+-- аннотацию и выделенные блоки, абзацы с метками лектора и с выносными формулами; в лабораторных — плашки.
 
 local function html(s) return pandoc.RawBlock('html', s) end
+
+local function from(list, i)  -- элементы list начиная с i-го
+  local out = pandoc.List()
+  for j = i, #list do out:insert(list[j]) end
+  return out
+end
 
 local function escape(s)
   return (s:gsub('&', '&amp;'):gsub('<', '&lt;'):gsub('>', '&gt;'):gsub('"', '&quot;'))
@@ -55,6 +68,17 @@ end
 local review_sections = { ['Главное из лекции'] = true, ['Что подчеркнул лектор'] = true, ['Глоссарий'] = true }
 
 local function Header(el)
+  local c = el.content
+  if el.level == 2 and c[1] and c[1].t == 'Str' and c[1].text == 'Вопрос' and c[3] and c[3].t == 'Str' then
+    local n = c[3].text:match('^(%d+)%.$')
+    if n then
+      el.identifier = 'q' .. n
+      el.content = from(c, 5)
+      local last = el.content[#el.content]
+      if last and last.t == 'Str' then last.text = last.text:gsub('%.$', '') end
+      return el
+    end
+  end
   if el.level == 2 and review_sections[pandoc.utils.stringify(el)] then
     el.classes:insert('rv')
     return el
@@ -65,9 +89,24 @@ local function mark_key(el)
   if is_key(el.content) then return pandoc.Div({ el }, pandoc.Attr('', { 'rv' })) end
 end
 
+local verdicts = { ['Плохо:'] = 'bad', ['Хорошо:'] = 'good' }
+
 local function Para(el)
   local key = mark_key(el)
   if key then return key end
+  local c = el.content
+  if #c == 1 and c[1].t == 'Strong' then
+    local label = pandoc.utils.stringify(c[1])
+    if verdicts[label] then
+      return html('<p class="verdict ' .. verdicts[label] .. '">' .. escape(label:sub(1, -2)) .. '</p>')
+    end
+  end
+  if c[1] and c[1].t == 'Str' and c[1].text == 'Файл:' then
+    return pandoc.Div({ el }, pandoc.Attr('', { 'fileref' }))
+  end
+  if #c == 1 and c[1].t == 'Emph' and pandoc.utils.stringify(c[1]):find('^Схема:') then
+    return pandoc.Div({ el }, pandoc.Attr('', { 'diagram-caption' }))
+  end
   if #el.content == 1 and el.content[1].t == 'Emph' then
     local txt = pandoc.utils.stringify(el.content[1])
     local tc, rest = txt:match('^Таймкод:%s*([%d:–%-]+)%s*·%s*(.*)$')
@@ -97,6 +136,36 @@ local function Note(el)
     first.content = newc
   end
   return el
+end
+
+local alerts = {
+  NOTE = { 'note', 'В твоей работе' }, WARNING = { 'warning', 'Подводный камень' },
+  CAUTION = { 'caution', 'Расхождение с практикой' }, TIP = { 'tip', 'Могут спросить' },
+  IMPORTANT = { 'important', 'Важно' },
+}
+
+local function BlockQuote(el)
+  local first = el.content[1]
+  if not (first and first.t == 'Para' and first.content[1] and first.content[1].t == 'Str') then return end
+  local kind = first.content[1].text:match('^%[!(%u+)%]$')
+  local a = kind and alerts[kind]
+  if not a then return end
+  local rest = from(first.content, 2)
+  while rest[1] and (rest[1].t == 'SoftBreak' or rest[1].t == 'Space') do rest:remove(1) end
+  local title, blocks = a[2], from(el.content, 2)
+  if #rest == 1 and rest[1].t == 'Strong' then
+    title = pandoc.utils.stringify(rest[1])
+  elseif #rest > 0 then
+    blocks:insert(1, pandoc.Para(rest))
+  end
+  blocks:insert(1, html('<div class="box-title">' .. escape(title) .. '</div>'))
+  return pandoc.Div(blocks, pandoc.Attr('', { 'box', 'box-' .. a[1], 'rv' }))
+end
+
+local function CodeBlock(el)
+  if el.classes:includes('mermaid') then
+    return html('<pre class="mermaid">' .. escape(el.text) .. '</pre>')
+  end
 end
 
 local function Image(el)
@@ -155,5 +224,19 @@ function Pandoc(doc)
     end,
   }
 
-  return doc:walk { Div = Div, Header = Header, Para = Para, Plain = mark_key, Strong = Strong, Note = Note, Image = Image }
+  if pandoc.utils.stringify(doc.meta['doc-kind'] or '') == 'lab' then
+    -- вступление учебника (до первого раздела) — в плашку, как аннотация лекции
+    local intro, i = pandoc.List(), 1
+    while doc.blocks[i] and doc.blocks[i].t ~= 'Header' do
+      intro:insert(doc.blocks[i]); i = i + 1
+    end
+    if #intro > 0 then
+      intro:insert(1, html('<div class="box-title">О работе</div>'))
+      doc.blocks = pandoc.List({ pandoc.Div(intro, pandoc.Attr('', { 'box', 'box-abstract', 'rv' })) })
+          .. from(doc.blocks, i)
+    end
+  end
+
+  return doc:walk { Div = Div, Header = Header, Para = Para, Plain = mark_key, Strong = Strong, Note = Note,
+                    Image = Image, BlockQuote = BlockQuote, CodeBlock = CodeBlock }
 end
