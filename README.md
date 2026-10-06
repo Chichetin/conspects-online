@@ -18,6 +18,8 @@ git add content && git commit -m "Обновить конспекты" && git pu
 
 - `sync.py` для каждой лекции берёт папку `lectures/<префикс><номер>[_vN]` с наибольшим N
   и копирует `summary.md`, использованные картинки и PDF из `output/` в `content/<курс>/<номер>/`.
+  Семинар — папка `<префикс>_seminar[_]<номер>[_vN]` (тоже результат `/lecture`) → `content/<курс>/seminar<номер>/`;
+  кроме слайдов из `work/figures/` копируются картинки вывода ноутбука из `work/notebook_png/`.
   Лабораторная — папка `lectures/` или `labs/` вида `<префикс>_lab<номер>[_vN]`: её `primer.md`
   копируется в `content/<курс>/lab<номер>/summary.md`, PDF — `output/<папка>_questions.pdf`.
   Без PDF на странице вместо кнопки — «PDF пока недоступен».

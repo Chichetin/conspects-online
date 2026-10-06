@@ -2,9 +2,11 @@
 """Копирует последние версии конспектов и учебников к лабораторным из text-extractor в content/.
 
 Папки в lectures/ и labs/: лекция — <префикс><номер>[_v<N>] (результат /lecture, summary.md),
+семинар — <префикс>_seminar[_]<номер>[_v<N>] (тоже /lecture, summary.md),
 лабораторная — <префикс>_lab<номер>[_v<N>] (результат /lab, primer.md). Для каждой берётся версия
-с наибольшим N (без суффикса — v1). В content/<slug курса>/<номер>/ (лабораторная — lab<номер>/)
-кладутся summary.md (пути к картинкам переписаны на figures/), использованные картинки и PDF, если он есть.
+с наибольшим N (без суффикса — v1). В content/<slug курса>/<номер>/ (семинар — seminar<номер>/,
+лабораторная — lab<номер>/) кладутся summary.md (пути к картинкам из work/<папка>/ переписаны
+на figures/), использованные картинки и PDF, если он есть.
 
     python sync.py [путь к text-extractor]   # по умолчанию ../text-extractor
 """
@@ -16,10 +18,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 CONTENT = ROOT / "content"
-DIR_RE = re.compile(r"^([a-z]+)(_lab)?(\d+)(?:_v(\d+))?$")
+DIR_RE = re.compile(r"^([a-z]+)(?:_(lab|seminar)_?)?(\d+)(?:_v(\d+))?$")
 # вид → (исходный markdown, суффикс PDF в output/, префикс папки на сайте)
-KINDS = {"lecture": ("summary.md", "conspect", ""), "lab": ("primer.md", "questions", "lab")}
-FIG_RE = re.compile(r"\]\(work/figures/([^)\s]+)\)")
+KINDS = {"lecture": ("summary.md", "conspect", ""), "seminar": ("summary.md", "conspect", "seminar"),
+         "lab": ("primer.md", "questions", "lab")}
+# картинки: слайды (work/figures/) и вывод ноутбука семинара (work/notebook_png/)
+FIG_RE = re.compile(r"\]\(work/(figures|notebook_png)/([^)\s]+)\)")
 
 
 def main() -> None:
@@ -30,7 +34,7 @@ def main() -> None:
     dirs = [d for sub in ("lectures", "labs") if (src / sub).is_dir() for d in sorted((src / sub).iterdir())]
     for d in dirs:
         m = DIR_RE.match(d.name)
-        kind = "lab" if m and m[2] else "lecture"
+        kind = (m[2] if m else None) or "lecture"
         if not d.is_dir() or not m or not (d / KINDS[kind][0]).exists():
             continue
         prefix, num, ver = m[1], int(m[3]), int(m[4] or 1)
@@ -48,9 +52,9 @@ def main() -> None:
         (dst / "figures").mkdir(parents=True)
 
         text = (d / md).read_text()
-        for name in sorted(set(FIG_RE.findall(text))):
-            shutil.copy2(d / "work" / "figures" / name, dst / "figures" / name)
-        (dst / "summary.md").write_text(FIG_RE.sub(r"](figures/\1)", text))
+        for sub, name in sorted(set(FIG_RE.findall(text))):
+            shutil.copy2(d / "work" / sub / name, dst / "figures" / name)
+        (dst / "summary.md").write_text(FIG_RE.sub(r"](figures/\2)", text))
 
         pdf = src / "output" / f"{d.name}_{pdf_suffix}.pdf"
         if pdf.exists():

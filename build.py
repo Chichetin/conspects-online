@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Собирает сайт из content/ в _site/: страницы лекций и лабораторных (pandoc), страницы курсов и главную.
 
-Папка content/<курс>/<N>/ — лекция, content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab).
+Папка content/<курс>/<N>/ — лекция, content/<курс>/seminar<N>/ — семинар (конспект как у лекции),
+content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab).
 
     python build.py
     python -m http.server -d _site   # предпросмотр
@@ -61,6 +62,11 @@ def head(root: str) -> str:
 <script defer src="{root}assets/app.js"></script>"""
 
 
+# порядок в списке курса и подписи по умолчанию
+KIND_ORDER = ["lecture", "seminar", "lab"]
+KIND_LABELS = {"lecture": "Лекция", "seminar": "Семинар", "lab": "Лабораторная работа"}
+
+
 def read_lecture(d: Path) -> dict:
     text = (d / "summary.md").read_text()
     head = text.split("\n---", 1)[0]
@@ -71,9 +77,9 @@ def read_lecture(d: Path) -> dict:
 
     duration = re.search(r"Запись\s+([\d:]+)", field("meta-line"))
     minutes = max(1, round(len(re.findall(r"\w+", text)) / 180))
-    lab, num = re.fullmatch(r"(lab)?(\d+)", d.name).groups()
-    kind = "lab" if lab else "lecture"
-    label = field(kind) or f"{'Лабораторная работа' if lab else 'Лекция'} {num}"
+    sub, num = re.fullmatch(r"(lab|seminar)?(\d+)", d.name).groups()
+    kind = sub or "lecture"
+    label = field(kind) or f"{KIND_LABELS[kind]} {num}"
     return {
         "num": int(num), "kind": kind, "label": label, "dir": d, "title": field("title"),
         "duration": duration[1] if duration else "",
@@ -126,11 +132,10 @@ def plural(n: int, one: str, few: str, many: str) -> str:
 
 
 def count_label(lectures: list[dict]) -> str:
-    n_lec = sum(l["kind"] == "lecture" for l in lectures)
-    n_lab = len(lectures) - n_lec
-    parts = ([plural(n_lec, "лекция", "лекции", "лекций")] if n_lec else []) + \
-            ([plural(n_lab, "лабораторная", "лабораторные", "лабораторных")] if n_lab else [])
-    return " · ".join(parts)
+    forms = {"lecture": ("лекция", "лекции", "лекций"), "seminar": ("семинар", "семинара", "семинаров"),
+             "lab": ("лабораторная", "лабораторные", "лабораторных")}
+    counts = {k: sum(l["kind"] == k for l in lectures) for k in KIND_ORDER}
+    return " · ".join(plural(counts[k], *forms[k]) for k in KIND_ORDER if counts[k])
 
 
 def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) -> None:
@@ -278,7 +283,7 @@ def main() -> None:
         cdir = CONTENT / course["slug"]
         dirs = [d for d in cdir.iterdir() if (d / "summary.md").exists()] if cdir.exists() else []
         # сначала лекции, потом лабораторные, внутри — по номеру
-        lectures = sorted((read_lecture(d) for d in dirs), key=lambda l: (l["kind"] == "lab", l["num"]))
+        lectures = sorted((read_lecture(d) for d in dirs), key=lambda l: (KIND_ORDER.index(l["kind"]), l["num"]))
         if not lectures:
             continue
         for i, lec in enumerate(lectures):
