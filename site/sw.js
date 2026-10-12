@@ -56,7 +56,8 @@ async function staleWhileRevalidate(e) {
 self.addEventListener("fetch", (e) => {
   const req = e.request;
   const url = new URL(req.url);
-  if (req.method !== "GET" || !url.protocol.startsWith("http") || url.pathname.endsWith(".pdf")) return;
+  // no-store — запросы синхронизации прогресса: им нужен только свежий ответ сервера
+  if (req.method !== "GET" || req.cache === "no-store" || !url.protocol.startsWith("http") || url.pathname.endsWith(".pdf")) return;
   const fresh = req.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith(".html")
     || url.pathname.endsWith("search.json") || (url.origin === location.origin && /\.(js|css)$/.test(url.pathname));
   e.respondWith(fresh ? networkFirst(req) : staleWhileRevalidate(e));

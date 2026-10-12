@@ -10,9 +10,14 @@ const touch = matchMedia("(pointer: coarse)");
 const narrow = matchMedia("(max-width: 699px)");
 
 // localStorage может быть недоступен (приватный режим, запрет cookies) — тогда просто ничего не помним.
+// Изменение прогресса (ключи pos:) поднимает флаг dirty — синхронизация отправит его на сервер.
 const store = {
+  dirty: false,
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
-  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+  set(k, v) {
+    try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {}
+    if (k.startsWith("pos:")) this.dirty = true;
+  },
   json(k) { try { return JSON.parse(this.get(k)); } catch { return null; } },
 };
 
@@ -113,9 +118,11 @@ function togglePanel(p, open = !p.panel.classList.contains("open")) {
   if (open) setBarHidden(false);
 }
 
+// путь события, а не e.target: кнопка внутри панели могла уже перерисоваться и выпасть из DOM
 document.addEventListener("click", (e) => {
+  const path = e.composedPath();
   for (const p of panels) {
-    if (p.panel.classList.contains("open") && !p.panel.contains(e.target) && !p.button.contains(e.target)) {
+    if (p.panel.classList.contains("open") && !path.includes(p.panel) && !path.includes(p.button)) {
       togglePanel(p, false);
     }
   }
@@ -204,6 +211,190 @@ function renderSettings() {
   lookButtons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.value === doc.dataset.look)));
 }
 renderSettings();
+
+// ---------- синхронизация прогресса между устройствами ----------
+// Устройства одного читателя делят случайный код синхронизации — он же пароль. Сервер (server/sync_server.py)
+// хранит последнюю версию всех записей pos:, а сливает их клиент: по каждой лекции побеждает более свежая
+// запись (t), прочитанные блоки объединяются — кроме тех, что старше сброса прогресса (r) в свежей записи.
+// Настройки вида (тема, шрифт) не синхронизируются: на телефоне и компьютере они обычно разные.
+
+const SYNC_URL = "https://193-124-112-110.sslip.io/sync";
+const SYNC_CODE = /^[A-Za-z0-9_-]{22,64}$/;
+const syncState = { code: store.get("sync-code"), busy: null, at: 0, error: false };
+
+function mergeRecord(a, b) {
+  if (!a || !b) return a || b;
+  const [fresh, old] = (a.t || 0) >= (b.t || 0) ? [a, b] : [b, a];
+  const out = { ...fresh };
+  delete out.max;
+  if (fresh.r == null || (old.t || 0) > fresh.r) {
+    if (old.all) out.all = true;
+    const read = { ...old.read };
+    for (const [sec, idx] of Object.entries(fresh.read || {})) {
+      read[sec] = [...new Set([...(read[sec] || []), ...idx])].sort((x, y) => x - y);
+    }
+    out.read = read;
+    out.pct = Math.max(fresh.pct || 0, old.pct || 0);
+  }
+  return out;
+}
+
+function localProgress() {
+  const data = {};
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k.startsWith("pos:")) data[k] = store.json(k);
+    }
+  } catch {}
+  return data;
+}
+
+async function syncRequest(method, body) {
+  const res = await fetch(`${SYNC_URL}?code=${syncState.code}`, {
+    method, body, cache: "no-store", keepalive: method === "POST", signal: AbortSignal.timeout(12000),
+    headers: body ? { "Content-Type": "text/plain" } : {},
+  });
+  if (!res.ok && res.status !== 409) throw new Error(`sync ${res.status}`);
+  return { status: res.status, json: await res.json() };
+}
+
+// забрать данные с сервера, слить с локальными, отправить результат; 409 — кто-то записал раньше, повторяем
+async function runSync() {
+  store.dirty = false;
+  let remote = (await syncRequest("GET")).json;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const local = localProgress();
+    const merged = {};
+    const changed = [];
+    for (const k of new Set([...Object.keys(local), ...Object.keys(remote.data)])) {
+      merged[k] = mergeRecord(local[k], remote.data[k]);
+      if (JSON.stringify(merged[k]) !== JSON.stringify(local[k])) {
+        store.set(k, JSON.stringify(merged[k]));
+        changed.push(k);
+      }
+    }
+    store.dirty = false;
+    if (changed.length) document.dispatchEvent(new CustomEvent("progress-synced", { detail: changed }));
+    const same = Object.keys(merged).every((k) => JSON.stringify(merged[k]) === JSON.stringify(remote.data[k]));
+    if (same) return;
+    const { status, json } = await syncRequest("POST", JSON.stringify({ v: remote.v, data: merged }));
+    if (status !== 409) return;
+    remote = json;
+  }
+}
+
+function syncNow() {
+  if (!syncState.code || syncState.busy) return syncState.busy;
+  syncState.busy = runSync()
+    .then(() => { syncState.at = Date.now(); syncState.error = false; })
+    .catch(() => { syncState.error = true; store.dirty = true; })
+    .finally(() => { syncState.busy = null; renderSync(); });
+  renderSync();
+  return syncState.busy;
+}
+
+function setSyncCode(code) {
+  syncState.code = code;
+  syncState.at = 0;
+  syncState.error = false;
+  store.set("sync-code", code);
+  syncQr.hidden = true;
+  if (code) syncNow();
+  renderSync();
+}
+
+function newSyncCode() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes)).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+const syncLink = () => `${ROOT.href}#sync=${syncState.code}`;
+const syncStatus = el("p", { class: "sync-status" });
+const syncQr = el("div", { class: "sync-qr", hidden: true });
+const syncActions = el("div", { class: "sync-actions" });
+
+function syncButton(text, onclick) {
+  return el("button", { type: "button", text, onclick });
+}
+
+async function showSyncQr() {
+  if (!syncQr.hidden) { syncQr.hidden = true; return; }
+  try {
+    window.qrcode || await new Promise((resolve, reject) => {
+      document.head.append(el("script", {
+        src: "https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js", onload: resolve, onerror: reject,
+      }));
+    });
+    const qr = qrcode(0, "M");
+    qr.addData(syncLink());
+    qr.make();
+    syncQr.innerHTML = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+    syncQr.append(el("span", { text: "Отсканируйте камерой телефона" }));
+    syncQr.hidden = false;
+  } catch {
+    toast("Не удалось загрузить QR-код — скопируйте ссылку");
+  }
+}
+
+function renderSync() {
+  if (!syncState.code) {
+    syncStatus.textContent = "Прогресс чтения хранится только на этом устройстве.";
+    syncActions.replaceChildren(
+      syncButton("Включить", () => setSyncCode(newSyncCode())),
+      syncButton("У меня есть код", () => {
+        const input = prompt("Ссылка или код синхронизации с другого устройства:");
+        const code = input?.trim().split("#sync=").pop();
+        if (!input) return;
+        if (SYNC_CODE.test(code)) setSyncCode(code);
+        else toast("Это не похоже на код синхронизации");
+      }),
+    );
+    return;
+  }
+  const time = syncState.at && new Date(syncState.at).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+  syncStatus.textContent = syncState.busy ? "Синхронизация…"
+    : syncState.error ? "Нет связи с сервером — повторим позже."
+      : time ? `Синхронизировано в ${time}.` : "Синхронизация включена.";
+  syncStatus.classList.toggle("error", syncState.error && !syncState.busy);
+  syncActions.replaceChildren(
+    syncButton("Ссылка для другого устройства", async () => {
+      try {
+        await navigator.clipboard.writeText(syncLink());
+        toast("Ссылка скопирована — откройте её на другом устройстве");
+      } catch {
+        prompt("Откройте эту ссылку на другом устройстве:", syncLink());
+      }
+    }),
+    syncButton("QR-код", showSyncQr),
+    syncButton("Отключить", () => {
+      if (confirm("Отключить синхронизацию на этом устройстве? Прогресс останется здесь и на других устройствах.")) setSyncCode(null);
+    }),
+  );
+}
+
+settings.append(el("div", { class: "set-block sync" }, el("span", { text: "Синхронизация" }), syncStatus, syncActions, syncQr));
+renderSync();
+
+// ссылка вида …/#sync=<код> с другого устройства включает синхронизацию
+const hashCode = location.hash.startsWith("#sync=") ? location.hash.slice(6) : null;
+if (hashCode) {
+  history.replaceState(null, "", location.pathname + location.search);
+  if (!SYNC_CODE.test(hashCode)) toast("Ссылка синхронизации повреждена");
+  else if (hashCode === syncState.code) toast("Синхронизация уже включена");
+  else if (!syncState.code || confirm("Заменить код синхронизации на этом устройстве на код из ссылки?")) {
+    setSyncCode(hashCode);
+    toast("Синхронизация включена");
+  }
+}
+
+// когда синхронизировать: при открытии страницы, при возврате на вкладку, при уходе с неё
+// и раз в минуту, если прогресс изменился
+if (syncState.code && !hashCode) syncNow();
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden ? store.dirty : Date.now() - syncState.at > 30000) syncNow();
+});
+setInterval(() => store.dirty && !document.hidden && syncNow(), 60000);
 
 // ---------- поиск по всем конспектам ----------
 
@@ -402,12 +593,14 @@ if (!isLecture) {
       const rec = store.json(k) || {};
       const done = (rec.all ? 1 : rec.pct || 0) >= DONE;
       delete rec.max;
-      if (done) { delete rec.all; rec.read = {}; rec.pct = 0; } else { rec.all = true; rec.pct = 1; }
+      rec.t = Date.now();
+      if (done) { delete rec.all; rec.read = {}; rec.pct = 0; rec.r = rec.t; } else { rec.all = true; rec.pct = 1; }
       store.set(k, JSON.stringify(rec));
       renderLecture(a, mark);
     });
     const { saved, done } = renderLecture(a, mark);
     if (saved.t && saved.p > 0.03 && !done && (!last || saved.t > last.saved.t)) last = { a, saved };
+    document.addEventListener("progress-synced", () => renderLecture(a, mark));
   });
   const anchor = document.querySelector(".search-field") || document.querySelector(".list-page h1");
   if (last && anchor) {
@@ -533,7 +726,7 @@ function initLecture() {
   };
   const isDone = (f) => f >= 0.9;
 
-  function persist() {
+  function persist(reset = false) { // reset — отметки сняты: старые копии на других устройствах их не вернут
     const read = {};
     for (const b of blocks) if (b.read) (read[b.sec] ||= []).push(b.idx);
     const rec = store.json(key) || {};
@@ -542,6 +735,7 @@ function initLecture() {
     rec.read = read;
     rec.pct = Number(share(blocks).toFixed(3));
     rec.t = Date.now();
+    if (reset) rec.r = rec.t;
     store.set(key, JSON.stringify(rec));
   }
 
@@ -555,7 +749,7 @@ function initLecture() {
       e.stopPropagation();
       const done = isDone(share(list));
       list.forEach((b) => { b.read = !done; b.acc = 0; });
-      persist();
+      persist(done);
       renderRead();
       toast(done ? "Отмечено непрочитанным" : "Отмечено прочитанным");
     });
@@ -594,7 +788,7 @@ function initLecture() {
   allButton.addEventListener("click", () => {
     const done = isDone(share(blocks));
     blocks.forEach((b) => { b.read = !done; b.acc = 0; });
-    persist();
+    persist(done);
     renderRead();
     toast(done ? "Прогресс лекции сброшен" : "Лекция отмечена прочитанной");
   });
@@ -654,6 +848,15 @@ function initLecture() {
   updateProgress();
   if (saved.all) persist();
   renderRead();
+
+  // прогресс этой лекции пришёл с другого устройства — в хранилище уже слитая версия
+  document.addEventListener("progress-synced", (e) => {
+    if (!e.detail.includes(key)) return;
+    const rec = store.json(key) || {};
+    blocks.forEach((b) => { b.read = Boolean(rec.all || rec.read?.[b.sec]?.includes(b.idx)); });
+    if (rec.all) persist();
+    renderRead();
+  });
 
   const inZone = new Set();
   const zone = new IntersectionObserver((entries) => {

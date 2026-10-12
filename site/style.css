@@ -181,6 +181,17 @@ svg { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-wi
 }
 .switch[aria-checked="true"] { background: var(--c); }
 .switch[aria-checked="true"]::after { transform: translateX(1.1rem); }
+.set-block.sync { border-top: 1px solid var(--line); padding-top: .55rem; margin-top: .2rem; }
+.sync-status { margin: .3rem 0 .5rem; color: var(--muted); font-size: .82rem; line-height: 1.4; }
+.sync-status.error { color: var(--bad); }
+.sync-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+.sync-actions button {
+  border: 1px solid var(--line); background: none; color: var(--text); border-radius: 8px;
+  padding: .3rem .6rem; font: inherit; font-size: .82rem; cursor: pointer;
+}
+.sync-actions button:hover { border-color: var(--muted); }
+.sync-qr { margin-top: .6rem; text-align: center; color: var(--muted); font-size: .78rem; }
+.sync-qr svg { display: block; width: min(12rem, 100%); height: auto; margin: 0 auto .3rem; background: #fff; border-radius: 6px; }
 
 /* ---------- списки курсов ---------- */
 .list-page main { max-width: 44rem; margin: 0 auto; padding: 2.5rem 0 4rem; }
