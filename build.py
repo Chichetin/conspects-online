@@ -2,7 +2,8 @@
 """Собирает сайт из content/ в _site/: страницы лекций и лабораторных (pandoc), страницы курсов и главную.
 
 Папка content/<курс>/<N>/ — лекция, content/<курс>/seminar<N>/ — семинар (конспект как у лекции),
-content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab).
+content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab). Если рядом с конспектом лежит quiz.md
+(тест для самопроверки), рядом со страницей собирается quiz.html; в поиск он не попадает.
 
     python build.py
     python -m http.server -d _site   # предпросмотр
@@ -83,7 +84,7 @@ def read_lecture(d: Path) -> dict:
     return {
         "num": int(num), "kind": kind, "label": label, "dir": d, "title": field("title"),
         "duration": duration[1] if duration else "",
-        "minutes": minutes, "reading": f"{minutes} мин чтения",
+        "minutes": minutes, "reading": f"{minutes} мин чтения", "quiz": (d / "quiz.md").exists(),
     }
 
 
@@ -113,7 +114,7 @@ def meta(l: dict) -> str:
 
 def lecture_list(lectures: list[dict], prefix: str) -> str:
     items = "\n".join(
-        f'<li><a href="{prefix}{l["dir"].name}/" data-n="{l["num"]:02d}">'
+        f'<li><a href="{prefix}{l["dir"].name}/" data-n="{l["num"]:02d}"{' data-quiz="1"' if l["quiz"] else ""}>'
         f'<span class="num">{meta(l)}</span>'
         f'<span class="t">{html.escape(l["title"])}</span>'
         "</a></li>"
@@ -140,7 +141,7 @@ def count_label(lectures: list[dict]) -> str:
 
 def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) -> None:
     src, dst = lec["dir"], OUT / course["slug"] / src_name(lec)
-    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("summary.md"))
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("summary.md", "quiz.md"))
     args = [
         "pandoc", str(src / "summary.md"), "-f", "markdown", "-t", "html5",
         "--standalone", "--template", str(SITE / "lecture.html"),
@@ -157,10 +158,32 @@ def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) 
         args += ["-V", "pdf=1"]
     if "```mermaid" in (src / "summary.md").read_text():
         args += ["-V", "mermaid=1"]
+    if lec["quiz"]:
+        args += ["-V", "quiz=1"]
     for name, other in (("prev", prev), ("next", nxt)):
         if other:
             args += ["-V", f"{name}-href=../{src_name(other)}/", "-V", f"{name}-title={other['title']}"]
     subprocess.run(args, check=True)
+    if lec["quiz"]:
+        build_quiz(course, lec, dst)
+
+
+def build_quiz(course: dict, lec: dict, dst: Path) -> None:
+    """quiz.html рядом с конспектом. «Где в конспекте: раздел N» ведёт на раздел N собранной страницы конспекта:
+    номера и id разделов берутся из её HTML и передаются фильтру метаданными secmap («N=id|…»)."""
+    page_html = (dst / "index.html").read_text()
+    secs = re.findall(r'<section id="([^"]+)" class="level2[^"]*" data-number="(\d+)"', page_html)
+    secmap = "|".join(f"{n}={html.unescape(i)}" for i, n in secs)
+    subprocess.run([
+        "pandoc", str(lec["dir"] / "quiz.md"), "-f", "markdown", "-t", "html5",
+        "--standalone", "--template", str(SITE / "quiz.html"),
+        "--lua-filter", str(SITE / "quiz.lua"), "--katex",
+        "-M", f"secmap={secmap}",
+        "-V", "root=../../", "-V", f"course-slug={course['slug']}",
+        "-V", f"course-title={course['title']}", "-V", f"course-color={course.get('color', '')}",
+        "-V", f"label={lec['label']}", "-V", f"head={head('../../')}",
+        "-o", str(dst / "quiz.html"),
+    ], check=True)
 
 
 TEX_SYMBOLS = {"alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "varepsilon": "ε", "epsilon": "ε",

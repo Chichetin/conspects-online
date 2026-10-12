@@ -5,18 +5,20 @@ const ROOT = new URL("../", document.currentScript.src);
 const doc = document.documentElement;
 const body = document.body;
 const isLecture = body.classList.contains("lecture-page");
+const isQuiz = body.classList.contains("quiz-page");
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch = matchMedia("(pointer: coarse)");
 const narrow = matchMedia("(max-width: 699px)");
 
 // localStorage может быть недоступен (приватный режим, запрет cookies) — тогда просто ничего не помним.
-// Изменение прогресса (ключи pos:) поднимает флаг dirty — синхронизация отправит его на сервер.
+// Изменение прогресса (ключи pos: и результаты тестов quiz:) поднимает флаг dirty — синхронизация отправит его на сервер.
+const SYNCED = /^(pos|quiz):/;
 const store = {
   dirty: false,
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) {
     try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {}
-    if (k.startsWith("pos:")) this.dirty = true;
+    if (SYNCED.test(k)) this.dirty = true;
   },
   json(k) { try { return JSON.parse(this.get(k)); } catch { return null; } },
 };
@@ -214,8 +216,9 @@ renderSettings();
 
 // ---------- синхронизация прогресса между устройствами ----------
 // Устройства одного читателя делят случайный код синхронизации — он же пароль. Сервер (server/sync_server.py)
-// хранит последнюю версию всех записей pos:, а сливает их клиент: по каждой лекции побеждает более свежая
+// хранит последнюю версию всех записей pos: и quiz:, а сливает их клиент: по каждой лекции побеждает более свежая
 // запись (t), прочитанные блоки объединяются — кроме тех, что старше сброса прогресса (r) в свежей записи.
+// В результатах теста по каждому уровню берётся лучший счёт с обоих устройств и последний — с более свежего.
 // Настройки вида (тема, шрифт) не синхронизируются: на телефоне и компьютере они обычно разные.
 
 const SYNC_URL = "https://193-124-112-110.sslip.io/sync";
@@ -239,12 +242,25 @@ function mergeRecord(a, b) {
   return out;
 }
 
+function mergeQuiz(a, b) {
+  if (!a || !b) return a || b;
+  const levels = {};
+  for (const lv of new Set([...Object.keys(a.levels || {}), ...Object.keys(b.levels || {})])) {
+    const x = a.levels?.[lv];
+    const y = b.levels?.[lv];
+    if (!x || !y) { levels[lv] = x || y; continue; }
+    const fresh = (x.t || 0) >= (y.t || 0) ? x : y;
+    levels[lv] = { ...fresh, best: Math.max(x.best || 0, y.best || 0) };
+  }
+  return { t: Math.max(a.t || 0, b.t || 0), levels };
+}
+
 function localProgress() {
   const data = {};
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
-      if (k.startsWith("pos:")) data[k] = store.json(k);
+      if (SYNCED.test(k)) data[k] = store.json(k);
     }
   } catch {}
   return data;
@@ -268,7 +284,7 @@ async function runSync() {
     const merged = {};
     const changed = [];
     for (const k of new Set([...Object.keys(local), ...Object.keys(remote.data)])) {
-      merged[k] = mergeRecord(local[k], remote.data[k]);
+      merged[k] = (k.startsWith("quiz:") ? mergeQuiz : mergeRecord)(local[k], remote.data[k]);
       if (JSON.stringify(merged[k]) !== JSON.stringify(local[k])) {
         store.set(k, JSON.stringify(merged[k]));
         changed.push(k);
@@ -563,6 +579,16 @@ document.addEventListener("keydown", (e) => {
 // ---------- прогресс чтения: ключ — путь страницы лекции ----------
 
 const posKey = (path) => `pos:${path}`;
+const quizKey = (path) => `quiz:${path}`;
+const QUIZ_LEVELS = ["easy", "medium", "hard"];
+const fmtScore = (x) => String(Math.round(x * 2) / 2).replace(".", ",");
+
+function renderMath(root = document) {
+  if (!window.katex) return;
+  root.querySelectorAll(".math").forEach((m) => {
+    katex.render(m.textContent, m, { displayMode: m.classList.contains("display"), throwOnError: false });
+  });
+}
 
 if (!isLecture) {
   // на главной и на странице курса — отметки о прочитанном и «Продолжить» для последней начатой лекции;
@@ -601,6 +627,10 @@ if (!isLecture) {
     const { saved, done } = renderLecture(a, mark);
     if (saved.t && saved.p > 0.03 && !done && (!last || saved.t > last.saved.t)) last = { a, saved };
     document.addEventListener("progress-synced", () => renderLecture(a, mark));
+    if (a.dataset.quiz) {
+      renderQuizScore(a);
+      document.addEventListener("progress-synced", () => renderQuizScore(a));
+    }
   });
   const anchor = document.querySelector(".search-field") || document.querySelector(".list-page h1");
   if (last && anchor) {
@@ -613,6 +643,19 @@ if (!isLecture) {
   }
 }
 
+// результаты теста в списке лекций: «тест 12/15 · 9/15 · —» по уровням, лучший счёт
+function renderQuizScore(a) {
+  const rec = store.json(quizKey(pagePath(a.href)));
+  a.querySelector(".quiz-score")?.remove();
+  const levels = rec?.levels || {};
+  if (!QUIZ_LEVELS.some((lv) => levels[lv])) return;
+  const parts = QUIZ_LEVELS.map((lv) => levels[lv] ? `${fmtScore(levels[lv].best * levels[lv].n)}/${levels[lv].n}` : "—");
+  a.querySelector(".num").append(el("span", {
+    class: "quiz-score", text: `тест ${parts.join(" · ")}`,
+    title: "Лучший результат теста: лёгкий · средний · сложный уровень",
+  }));
+}
+
 // ---------- service worker: офлайн-доступ ----------
 
 if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
@@ -620,18 +663,14 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 }
 
 if (isLecture) initLecture();
+if (isQuiz) initQuiz();
 
 function initLecture() {
   const main = document.querySelector("main");
   const minutes = Number(body.dataset.minutes) || 0;
   const key = posKey(pagePath(location.href));
 
-  // формулы
-  if (window.katex) {
-    document.querySelectorAll(".math").forEach((m) => {
-      katex.render(m.textContent, m, { displayMode: m.classList.contains("display"), throwOnError: false });
-    });
-  }
+  renderMath();
 
   // ----- оглавление и подсветка текущего раздела -----
   const toc = document.getElementById("toc");
@@ -1250,4 +1289,218 @@ function prefetchForOffline() {
       }
     });
   });
+}
+
+// ---------- тест для самопроверки (quiz.html, разметка — site/quiz.lua) ----------
+// Уровни — вкладки. Вопрос проверяется сразу: выбор и число — автоматически, открытый — самооценкой по эталону
+// (знал 1 / частично 0,5 / не знал 0). Варианты перемешиваются при каждом прохождении. Когда отвечены все
+// вопросы уровня, результат сохраняется в quiz:<путь лекции> — { t, levels: { easy: { best, last, n, t } } } —
+// и синхронизируется вместе с прогрессом чтения.
+
+function initQuiz() {
+  renderMath();
+  const main = document.querySelector("main");
+  const levels = [...main.querySelectorAll(".quiz-level")];
+  if (!levels.length) return;
+  const key = quizKey(pagePath(new URL("./", location.href)));
+  body.classList.add("quiz-ready");
+
+  const shuffle = (list) => {
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list;
+  };
+
+  function setupQuestion(q, onChange) {
+    const type = q.dataset.type;
+    const keyBox = q.querySelector(".quiz-key");
+    const result = el("p", { class: "quiz-result", role: "status" });
+    const actions = el("div", { class: "quiz-actions" });
+    keyBox.before(actions, result);
+    if (type === "single" || type === "multi") q.querySelector(".quiz-answer")?.remove(); // верные отметятся в вариантах
+    const item = { score: null, self: type === "open" };
+
+    function reveal(on) {
+      keyBox.hidden = !on;
+      keyBox.open = on;
+    }
+    function finish(score, text, cls) {
+      item.score = score;
+      result.textContent = text;
+      result.className = `quiz-result ${cls}`;
+      q.classList.toggle("answered", score != null);
+      onChange();
+    }
+
+    if (type === "single" || type === "multi") {
+      const opts = q.querySelector(".quiz-options");
+      const options = [...opts.children].map((o) => {
+        const input = el("input", { type: type === "multi" ? "checkbox" : "radio", name: q.id });
+        o.replaceChildren(el("label", { class: "quiz-choice" }, input, el("span", { class: "quiz-choice-text" }, ...o.childNodes)));
+        return { o, input, ok: o.dataset.ok === "1" };
+      });
+      if (type === "multi") opts.before(el("p", { class: "quiz-hint", text: "Выберите все верные варианты." }));
+      const check = el("button", { type: "button", class: "quiz-btn", text: "Проверить", disabled: true });
+      actions.append(check);
+      opts.addEventListener("change", () => { check.disabled = !options.some((x) => x.input.checked); });
+      check.addEventListener("click", () => {
+        const right = options.every((x) => x.input.checked === x.ok);
+        options.forEach((x) => {
+          x.input.disabled = true;
+          x.o.classList.toggle("ok", x.ok);
+          x.o.classList.toggle("bad", x.input.checked && !x.ok);
+          x.o.classList.toggle("missed", !x.input.checked && x.ok);
+        });
+        check.hidden = true;
+        reveal(true);
+        finish(right ? 1 : 0, right ? "Верно" : "Неверно", right ? "ok" : "bad");
+      });
+      item.reset = () => {
+        opts.replaceChildren(...shuffle(options.map((x) => x.o)));
+        options.forEach((x) => {
+          x.input.checked = false;
+          x.input.disabled = false;
+          x.o.classList.remove("ok", "bad", "missed");
+        });
+        check.hidden = false;
+        check.disabled = true;
+      };
+    } else if (type === "num") {
+      const box = q.querySelector(".quiz-num");
+      const answer = Number(box.dataset.answer);
+      const tol = Number(box.dataset.tol) || 0;
+      const input = el("input", { type: "text", inputmode: "decimal", class: "quiz-input", placeholder: "Ваш ответ", autocomplete: "off", "aria-label": "Ответ числом" });
+      const check = el("button", { type: "button", class: "quiz-btn", text: "Проверить" });
+      box.append(input);
+      actions.append(check);
+      const run = () => {
+        const v = Number(input.value.replace(/\s/g, "").replace(",", "."));
+        if (!input.value.trim() || Number.isNaN(v)) { toast("Введите число"); input.focus(); return; }
+        const right = Math.abs(v - answer) <= tol + 1e-9;
+        input.disabled = true;
+        input.classList.toggle("ok", right);
+        input.classList.toggle("bad", !right);
+        check.hidden = true;
+        reveal(true);
+        finish(right ? 1 : 0, right ? "Верно" : "Неверно", right ? "ok" : "bad");
+      };
+      check.addEventListener("click", run);
+      input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
+      item.reset = () => {
+        input.value = "";
+        input.disabled = false;
+        input.classList.remove("ok", "bad");
+        check.hidden = false;
+      };
+    } else if (type === "open") {
+      const box = q.querySelector(".quiz-open");
+      const text = el("textarea", { class: "quiz-textarea", rows: 4, placeholder: "Ответьте своими словами — или в уме, если не хочется писать" });
+      const show = el("button", { type: "button", class: "quiz-btn", text: "Показать эталон" });
+      const grades = [["Знал", 1, "ok"], ["Частично", 0.5, "part"], ["Не знал", 0, "bad"]].map(([label, score, cls]) =>
+        el("button", { type: "button", class: "quiz-grade", "aria-pressed": "false", text: label, onclick: (e) => {
+          grades.forEach((g) => g.setAttribute("aria-pressed", String(g === e.currentTarget)));
+          finish(score, `Самооценка: ${label.toLowerCase()}`, cls);
+        } }));
+      const gradeRow = el("div", { class: "quiz-grades", hidden: true }, el("span", { text: "Сравните с ключевыми пунктами:" }), ...grades);
+      box.append(text);
+      actions.append(show, gradeRow);
+      show.addEventListener("click", () => {
+        show.hidden = true;
+        gradeRow.hidden = false;
+        reveal(true);
+      });
+      item.reset = () => {
+        text.value = "";
+        show.hidden = false;
+        gradeRow.hidden = true;
+        grades.forEach((g) => g.setAttribute("aria-pressed", "false"));
+      };
+    }
+
+    const reset = item.reset || (() => {});
+    item.reset = () => {
+      reset();
+      reveal(false);
+      item.score = null;
+      result.textContent = "";
+      result.className = "quiz-result";
+      q.classList.remove("answered");
+    };
+    item.reset();
+    return item;
+  }
+
+  const saved = () => store.json(key) || { levels: {} };
+  const tabs = el("div", { class: "quiz-tabs", role: "tablist", "aria-label": "Уровень сложности" });
+  levels[0].before(tabs);
+  const state = levels.map((level) => {
+    const h = level.querySelector("h2");
+    const st = { level, id: level.id, title: h.textContent.trim(), done: false };
+    st.items = [...level.querySelectorAll(".quiz-q")].map((q) => setupQuestion(q, () => update(st)));
+    st.tab = el("button", { type: "button", role: "tab", class: "quiz-tab", onclick: () => select(st) },
+      el("span", { class: "quiz-tab-name", text: st.title.replace(/\s*уровень$/i, "") }),
+      el("span", { class: "quiz-tab-score" }));
+    st.footer = el("div", { class: "quiz-footer" });
+    level.append(st.footer);
+    h.classList.add("quiz-level-title");
+    tabs.append(st.tab);
+    return st;
+  });
+
+  function renderTab(st) {
+    const rec = saved().levels?.[st.id];
+    st.tab.querySelector(".quiz-tab-score").textContent = rec
+      ? `${fmtScore(rec.best * rec.n)}/${rec.n}` : `${st.items.length} вопр.`;
+    st.tab.classList.toggle("has-score", Boolean(rec));
+  }
+
+  function update(st) {
+    const answered = st.items.filter((x) => x.score != null);
+    const n = st.items.length;
+    const total = answered.reduce((s, x) => s + x.score, 0);
+    if (answered.length < n) {
+      st.done = false;
+      st.footer.replaceChildren(el("p", { class: "quiz-progress", text: `Отвечено ${answered.length} из ${n}` }));
+      return;
+    }
+    const self = st.items.filter((x) => x.self).length;
+    const rec = saved();
+    rec.levels ||= {};
+    const prev = rec.levels[st.id];
+    const now = Date.now();
+    rec.levels[st.id] = { best: Math.max(prev?.best || 0, total / n), last: total / n, n, t: now };
+    rec.t = now;
+    store.set(key, JSON.stringify(rec));
+    st.done = true;
+    const next = state[state.indexOf(st) + 1];
+    st.footer.replaceChildren(
+      el("p", { class: "quiz-total" }, el("b", { text: `${fmtScore(total)} из ${n}` }),
+        self ? ` — открытые вопросы (${self}) по самооценке` : ""),
+      el("div", { class: "quiz-actions" },
+        el("button", { type: "button", class: "quiz-btn", text: "Пройти заново", onclick: () => restart(st) }),
+        next ? el("button", { type: "button", class: "quiz-btn quiz-btn-alt", text: `${next.title} →`, onclick: () => { select(next); scrollTo({ top: 0 }); } }) : ""),
+    );
+    renderTab(st);
+  }
+
+  function restart(st) {
+    st.items.forEach((x) => x.reset());
+    update(st);
+    st.level.scrollIntoView();
+  }
+
+  function select(st, push = true) {
+    state.forEach((x) => {
+      x.level.hidden = x !== st;
+      x.tab.setAttribute("aria-selected", String(x === st));
+    });
+    if (push) history.replaceState(history.state, "", `#${st.id}`);
+  }
+
+  state.forEach((st) => { renderTab(st); update(st); });
+  document.addEventListener("progress-synced", () => state.forEach(renderTab));
+  const fromHash = state.find((st) => `#${st.id}` === location.hash);
+  select(fromHash || state.find((st) => !saved().levels?.[st.id]) || state[0], false);
 }

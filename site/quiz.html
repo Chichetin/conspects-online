@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Проверить себя: $label$. $title$ — $course-title$</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+$head$
+</head>
+<body class="quiz-page"$if(course-color)$ style="--course: $course-color$"$endif$>
+<header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a><span class="sep">/</span><a href="./">$label$</a></header>
+
+<main>
+<header class="lecture-head">
+<p class="kicker"><a href="$root$$course-slug$/">$course-title$</a> · $label$ · <a href="./">$title$</a></p>
+<h1>Проверить себя</h1>
+<p class="byline"><a class="back-link" href="./">← К конспекту</a></p>
+</header>
+
+$body$
+</main>
+</body>
+</html>
