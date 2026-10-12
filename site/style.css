@@ -131,6 +131,9 @@ svg { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-wi
   background: linear-gradient(135deg, #2f6db5 50%, #c0632b 50%);
 }
 .site-bar .sep { color: var(--line); }
+.site-bar .bar-tests { flex-shrink: 0; align-self: center; padding: .35rem .6rem; border-radius: 8px; font-weight: 700; }
+.site-bar .bar-tests:hover { background: var(--tint); }
+.tests-page .site-bar .bar-tests { color: var(--text); }
 .bar-tools { margin-left: auto; display: flex; gap: .25rem; flex-shrink: 0; padding-left: .5rem; }
 .icon-btn {
   display: grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0;
@@ -616,6 +619,31 @@ main :is(h2, h3):hover .read-mark, main .read-mark:focus-visible { opacity: 1; }
 .quiz-cta-title::after { content: " →"; }
 .quiz-cta-text { display: block; color: var(--muted); font-size: .92rem; margin-top: .2rem; }
 .lectures .quiz-score { margin-left: .6em; color: var(--c); }
+.tests-cta { margin: 1.4rem 0 0; }
+
+/* ---------- страница «Тесты» ---------- */
+.tests { list-style: none; padding: 0; margin: 0; }
+.tests-item { padding: .85rem 0; }
+.tests-item + .tests-item { border-top: 1px solid var(--line); }
+.tests-title { display: block; color: inherit; text-decoration: none; }
+.tests-title:hover .t { color: var(--c); }
+.tests-title .num { display: block; font: .8rem var(--ui); color: var(--muted); letter-spacing: .02em; }
+.tests-title .t { display: block; font: 700 1.08rem/1.35 var(--ui); margin: .15rem 0 .5rem; }
+.tests-levels { display: flex; flex-wrap: wrap; gap: .4rem; }
+.tests-level {
+  display: inline-flex; align-items: baseline; gap: .45rem; padding: .4rem .75rem; border-radius: 8px;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); text-decoration: none; font: .9rem var(--ui);
+}
+.tests-level:hover { border-color: var(--c); }
+.tests-level-name { font-weight: 700; }
+.tests-level-score { color: var(--muted); font-size: .85rem; white-space: nowrap; }
+.tests-level.done { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 8%, var(--bg)); }
+.tests-level.done .tests-level-score { color: var(--ok); font-weight: 700; }
+.tests-level.going { border-color: color-mix(in srgb, var(--c) 50%, var(--line)); }
+.tests-level.going .tests-level-score { color: var(--c); font-weight: 700; }
+.tests-none { opacity: .5; }
+.tests-none .tests-title .t { margin-bottom: .2rem; }
+.tests-empty { font: .85rem var(--ui); color: var(--muted); }
 
 .back-link { font-weight: 700; text-decoration: none; }
 .quiz-intro { font-family: var(--ui); color: var(--muted); font-size: 1rem; }

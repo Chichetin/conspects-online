@@ -8,13 +8,13 @@
 $head$
 </head>
 <body class="quiz-page"$if(course-color)$ style="--course: $course-color$"$endif$>
-<header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a><span class="sep">/</span><a href="./">$label$</a></header>
+<header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a><span class="sep">/</span><a href="./">$label$</a><a class="bar-tests" href="$root$tests/">Тесты</a></header>
 
 <main>
 <header class="lecture-head">
 <p class="kicker"><a href="$root$$course-slug$/">$course-title$</a> · $label$ · <a href="./">$title$</a></p>
 <h1>Проверить себя</h1>
-<p class="byline"><a class="back-link" href="./">← К конспекту</a></p>
+<p class="byline"><a class="back-link" href="./">$if(lab)$← К учебнику$else$← К конспекту$endif$</a></p>
 </header>
 
 $body$

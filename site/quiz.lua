@@ -6,7 +6,9 @@
 --   **Ответ:** 0.92 ± 0.01               -> div.quiz-num[data-answer, data-tol]
 --   **Эталон:** … **Ключевые пункты:** … -> в ответ: div.quiz-etalon и div.quiz-points
 --   **Разбор:** …                        -> в ответ: div.quiz-explain
---   **Где в конспекте:** раздел N «…»    -> ссылки на разделы конспекта (id из метаданных secmap: «N=id|…»)
+--   **Где в конспекте:** раздел N «…»    -> ссылки на разделы конспекта (id из метаданных secmap: «N=id|…»);
+--   **Где в учебнике:** вопрос N «…»     -> то же у лабораторной: ссылки на вопросы учебника
+--   блоки кода (в тексте, эталоне, разборе) -> как есть
 -- Ответ и разбор лежат в <details class="quiz-key">: без JS их можно раскрыть вручную, с JS их
 -- показывает app.js после проверки.
 
@@ -44,15 +46,16 @@ end
 
 local secmap = {}
 
-local function where_para(block)
+local function where_para(block, label)
   local text = pandoc.utils.stringify(after_label(block))
-  local out = pandoc.List { pandoc.Strong { pandoc.Str('Где в конспекте:') }, pandoc.Space() }
+  local unit = label == 'Где в учебнике:' and 'вопрос ' or 'раздел '
+  local out = pandoc.List { pandoc.Strong { pandoc.Str(label) }, pandoc.Space() }
   local refs = 0
   for n, title in text:gmatch('(%d+)%s*«([^»]+)»') do
     if refs > 0 then out:insert(pandoc.Str(',')); out:insert(pandoc.Space()) end
-    local label = pandoc.Str('раздел ' .. n .. ' «' .. title .. '»')
+    local ref = pandoc.Str(unit .. n .. ' «' .. title .. '»')
     local id = secmap[n]
-    out:insert(id and pandoc.Link({ label }, './#' .. id) or label)
+    out:insert(id and pandoc.Link({ ref }, './#' .. id) or ref)
     refs = refs + 1
   end
   if refs == 0 then return pandoc.Div({ block }, pandoc.Attr('', { 'quiz-where' })) end
@@ -80,8 +83,8 @@ local function question(id, header, blocks)
     elseif label == 'Разбор:' then
       mode = 'explain'
       explain:insert(pandoc.Para(after_label(b)))
-    elseif label == 'Где в конспекте:' then
-      mode, where = 'where', where_para(b)
+    elseif label == 'Где в конспекте:' or label == 'Где в учебнике:' then
+      mode, where = 'where', where_para(b, label)
     elseif b.t == 'BulletList' and mode == 'points' then
       points = b
     elseif b.t == 'BulletList' and mode == 'body' and task_item(b.content[1] or {}) ~= nil then

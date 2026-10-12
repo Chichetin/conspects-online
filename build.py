@@ -3,7 +3,8 @@
 
 Папка content/<курс>/<N>/ — лекция, content/<курс>/seminar<N>/ — семинар (конспект как у лекции),
 content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab). Если рядом с конспектом лежит quiz.md
-(тест для самопроверки), рядом со страницей собирается quiz.html; в поиск он не попадает.
+(тест для самопроверки), рядом со страницей собирается quiz.html; в поиск он не попадает. Все тесты — на
+странице tests/: по каждой лекции, семинару и лабораторной — кнопки уровней.
 
     python build.py
     python -m http.server -d _site   # предпросмотр
@@ -66,6 +67,25 @@ def head(root: str) -> str:
 # порядок в списке курса и подписи по умолчанию
 KIND_ORDER = ["lecture", "seminar", "lab"]
 KIND_LABELS = {"lecture": "Лекция", "seminar": "Семинар", "lab": "Лабораторная работа"}
+# уровни теста: заголовок в quiz.md → id вкладки на странице теста (как в site/quiz.lua)
+QUIZ_LEVELS = {"Лёгкий уровень": "easy", "Средний уровень": "medium", "Сложный уровень": "hard"}
+
+
+def quiz_counts(path: Path) -> dict[str, int] | None:
+    """Число вопросов по уровням теста ({"easy": 14, …}) или None, если теста нет. Строки в блоках кода пропускаются."""
+    if not path.exists():
+        return None
+    counts, level, fence = {}, None, False
+    for line in path.read_text().splitlines():
+        if line.lstrip().startswith("```"):
+            fence = not fence
+        elif fence:
+            continue
+        elif line.startswith("## "):
+            level = QUIZ_LEVELS.get(line[3:].strip())
+        elif line.startswith("### ") and level:
+            counts[level] = counts.get(level, 0) + 1
+    return counts
 
 
 def read_lecture(d: Path) -> dict:
@@ -84,11 +104,11 @@ def read_lecture(d: Path) -> dict:
     return {
         "num": int(num), "kind": kind, "label": label, "dir": d, "title": field("title"),
         "duration": duration[1] if duration else "",
-        "minutes": minutes, "reading": f"{minutes} мин чтения", "quiz": (d / "quiz.md").exists(),
+        "minutes": minutes, "reading": f"{minutes} мин чтения", "quiz": quiz_counts(d / "quiz.md"),
     }
 
 
-def page(title: str, root: str, body: str, color: str = "") -> str:
+def page(title: str, root: str, body: str, color: str = "", cls: str = "") -> str:
     style = f' style="--course: {color}"' if color else ""
     return f"""<!doctype html>
 <html lang="ru">
@@ -97,8 +117,8 @@ def page(title: str, root: str, body: str, color: str = "") -> str:
 <title>{html.escape(title)}</title>
 {head(root)}
 </head>
-<body class="list-page"{style}>
-<header class="site-bar"><a class="brand" href="{root}">Конспекты</a></header>
+<body class="list-page{" " + cls if cls else ""}"{style}>
+<header class="site-bar"><a class="brand" href="{root}">Конспекты</a><a class="bar-tests" href="{root}tests/">Тесты</a></header>
 <main>
 {body}
 </main>
@@ -160,6 +180,8 @@ def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) 
         args += ["-V", "mermaid=1"]
     if lec["quiz"]:
         args += ["-V", "quiz=1"]
+    if lec["kind"] == "lab":
+        args += ["-V", "lab=1"]
     for name, other in (("prev", prev), ("next", nxt)):
         if other:
             args += ["-V", f"{name}-href=../{src_name(other)}/", "-V", f"{name}-title={other['title']}"]
@@ -169,10 +191,12 @@ def build_lecture(course: dict, lec: dict, prev: dict | None, nxt: dict | None) 
 
 
 def build_quiz(course: dict, lec: dict, dst: Path) -> None:
-    """quiz.html рядом с конспектом. «Где в конспекте: раздел N» ведёт на раздел N собранной страницы конспекта:
-    номера и id разделов берутся из её HTML и передаются фильтру метаданными secmap («N=id|…»)."""
+    """quiz.html рядом с конспектом. «Где в конспекте: раздел N» (у лабораторной «Где в учебнике: вопрос N») ведёт
+    на раздел N собранной страницы: номера и id разделов берутся из её HTML и передаются фильтру метаданными
+    secmap («N=id|…»)."""
     page_html = (dst / "index.html").read_text()
-    secs = re.findall(r'<section id="([^"]+)" class="level2[^"]*" data-number="(\d+)"', page_html)
+    # pandoc переносит длинный тег <section> на новую строку — между атрибутами любой пробельный символ
+    secs = re.findall(r'<section\s+id="([^"]+)"\s+class="level2[^"]*"\s+data-number="(\d+)"', page_html)
     secmap = "|".join(f"{n}={html.unescape(i)}" for i, n in secs)
     subprocess.run([
         "pandoc", str(lec["dir"] / "quiz.md"), "-f", "markdown", "-t", "html5",
@@ -182,8 +206,40 @@ def build_quiz(course: dict, lec: dict, dst: Path) -> None:
         "-V", "root=../../", "-V", f"course-slug={course['slug']}",
         "-V", f"course-title={course['title']}", "-V", f"course-color={course.get('color', '')}",
         "-V", f"label={lec['label']}", "-V", f"head={head('../../')}",
+        *(["-V", "lab=1"] if lec["kind"] == "lab" else []),
         "-o", str(dst / "quiz.html"),
     ], check=True)
+
+
+def tests_page(courses: list[tuple[dict, list[dict]]]) -> str:
+    """Страница tests/: по каждой лекции, семинару и лабораторной — кнопки уровней теста с числом вопросов.
+    Лучший результат и незаконченное прохождение по уровням дописывает app.js из записей quiz:."""
+    level_names = {v: k.split()[0] for k, v in QUIZ_LEVELS.items()}
+    sections = []
+    for course, lectures in courses:
+        items = []
+        for l in lectures:
+            href = f"../{course['slug']}/{src_name(l)}/"
+            head_html = (f'<a class="tests-title" href="{href}"><span class="num">{html.escape(l["label"])}</span>'
+                         f'<span class="t">{html.escape(l["title"])}</span></a>')
+            if l["quiz"]:
+                buttons = "".join(
+                    f'<a class="tests-level" href="{href}quiz.html#{lv}" data-level="{lv}" data-n="{n}">'
+                    f'<span class="tests-level-name">{name}</span><span class="tests-level-score">{plural(n, "вопрос", "вопроса", "вопросов")}</span></a>'
+                    for lv, name in level_names.items() if (n := l["quiz"].get(lv)))
+                items.append(f'<li class="tests-item" data-quiz="{href}">{head_html}<div class="tests-levels">{buttons}</div></li>')
+            else:
+                items.append(f'<li class="tests-item tests-none">{head_html}<span class="tests-empty">теста пока нет</span></li>')
+        n_quiz = sum(bool(l["quiz"]) for l in lectures)
+        sections.append(f'<section class="course" style="--course: {course.get("color", "")}">\n'
+                        f'<h2><a href="../{course["slug"]}/">{html.escape(course["title"])}</a>'
+                        f'<span class="count">{plural(n_quiz, "тест", "теста", "тестов")}</span></h2>\n'
+                        f'<ul class="tests">\n' + "\n".join(items) + "\n</ul>\n</section>")
+    return page("Тесты — Конспекты лекций", "../", f"""
+<h1>Тесты</h1>
+<p class="lead">Проверить себя после чтения: по каждой лекции, семинару и лабораторной — лёгкий, средний и сложный уровни.
+У каждого вопроса — разбор и ссылка на раздел конспекта или вопрос учебника; к лабораторным тест — репетиция защиты.</p>
+{"".join(sections)}""", cls="tests-page")
 
 
 TEX_SYMBOLS = {"alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "varepsilon": "ε", "epsilon": "ε",
@@ -301,7 +357,7 @@ def main() -> None:
     for f in ("style.css", "looks.css", "app.js"):
         shutil.copy2(SITE / f, OUT / "assets" / f)
 
-    sections, search = [], {"lectures": [], "sections": []}
+    sections, search, all_lectures = [], {"lectures": [], "sections": []}, []
     for course in courses:
         cdir = CONTENT / course["slug"]
         dirs = [d for d in cdir.iterdir() if (d / "summary.md").exists()] if cdir.exists() else []
@@ -309,6 +365,7 @@ def main() -> None:
         lectures = sorted((read_lecture(d) for d in dirs), key=lambda l: (KIND_ORDER.index(l["kind"]), l["num"]))
         if not lectures:
             continue
+        all_lectures.append((course, lectures))
         for i, lec in enumerate(lectures):
             build_lecture(course, lec, lectures[i - 1] if i else None,
                           lectures[i + 1] if i + 1 < len(lectures) else None)
@@ -334,7 +391,10 @@ def main() -> None:
 <h1>Конспекты лекций</h1>
 <p class="lead">Конспекты по записям лекций: текст вместо видео, схемы со слайдов, таймкоды и глоссарий.
 Учебники к защите лабораторных: по разделу на каждый вопрос.</p>
+<a class="quiz-cta tests-cta" href="tests/"><span class="quiz-cta-title">Проверить себя</span><span class="quiz-cta-text">Тесты по лекциям, семинарам и лабораторным: три уровня сложности, у каждого вопроса — разбор.</span></a>
 {"".join(sections)}"""))
+    (OUT / "tests").mkdir()
+    (OUT / "tests" / "index.html").write_text(tests_page(all_lectures))
     (OUT / "search.json").write_text(json.dumps(search, ensure_ascii=False, separators=(",", ":")))
     write_pwa()
 

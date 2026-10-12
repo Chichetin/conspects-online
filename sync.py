@@ -6,7 +6,7 @@
 лабораторная — <префикс>_lab<номер>[_v<N>] (результат /lab, primer.md). Для каждой берётся версия
 с наибольшим N (без суффикса — v1). В content/<slug курса>/<номер>/ (семинар — seminar<номер>/,
 лабораторная — lab<номер>/) кладутся summary.md (пути к картинкам из work/<папка>/ переписаны
-на figures/), использованные картинки и PDF, если он есть. У лекций и семинаров — ещё тест quiz.md, если он есть.
+на figures/), использованные картинки, PDF, если он есть, и тест для самопроверки quiz.md, если он есть.
 
     python sync.py [путь к text-extractor]   # по умолчанию ../text-extractor
 """
@@ -55,7 +55,7 @@ def main() -> None:
         for sub, name in sorted(set(FIG_RE.findall(text))):
             shutil.copy2(d / "work" / sub / name, dst / "figures" / name)
         (dst / "summary.md").write_text(FIG_RE.sub(r"](figures/\2)", text))
-        if kind != "lab" and (d / "quiz.md").exists():
+        if (d / "quiz.md").exists():
             shutil.copy2(d / "quiz.md", dst / "quiz.md")  # тест для самопроверки (/quiz)
 
         pdf = src / "output" / f"{d.name}_{pdf_suffix}.pdf"

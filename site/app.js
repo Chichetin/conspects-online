@@ -137,7 +137,8 @@ const settingsButton = el("button", {
   class: "icon-btn aa", type: "button", "aria-label": "Настройки чтения", title: "Настройки чтения",
   "aria-controls": "settings", "aria-expanded": "false", text: "Aa",
 });
-bar.append(el("div", { class: "bar-tools" }, searchButton, settingsButton));
+// ссылка «Тесты» из шаблона — справа, рядом с кнопками
+bar.append(el("div", { class: "bar-tools" }, ...bar.querySelectorAll(".bar-tests"), searchButton, settingsButton));
 
 const FONT_STEPS = ["-1", "0", "1", "2"];
 const THEMES = [["auto", "Авто"], ["light", "Светлая"], ["dark", "Тёмная"]];
@@ -662,6 +663,32 @@ function renderQuizScore(a) {
     title: "Лучший результат теста: лёгкий · средний · сложный уровень",
   }));
 }
+
+// страница «Тесты»: на кнопке уровня — лучший результат («✓ 13/14»), незаконченное прохождение («5/15 …»)
+// или число вопросов (его пишет build.py)
+function renderTestsItem(item) {
+  const rec = store.json(quizKey(pagePath(item.querySelector(".tests-title").href))) || {};
+  item.querySelectorAll(".tests-level").forEach((a) => {
+    const lv = a.dataset.level;
+    const n = Number(a.dataset.n);
+    const best = rec.levels?.[lv];
+    const answered = Object.values(rec.cur?.[lv]?.ans || {})
+      .filter((x) => x && (x.pick || x.num != null || x.grade != null)).length;
+    const going = answered > 0 && answered < n;
+    const score = a.querySelector(".tests-level-score");
+    score.dataset.n ||= score.textContent;
+    score.textContent = going ? `${answered}/${n} …` : best ? `✓ ${fmtScore(best.best * best.n)}/${best.n}` : score.dataset.n;
+    a.classList.toggle("going", going);
+    a.classList.toggle("done", !going && Boolean(best));
+    a.title = [best && `Лучший результат: ${fmtScore(best.best * best.n)} из ${best.n}`,
+      going && `Начато: отвечено ${answered} из ${n}`].filter(Boolean).join(" · ") || `${score.dataset.n}, ещё не проходили`;
+  });
+}
+
+document.querySelectorAll(".tests-item[data-quiz]").forEach((item) => {
+  renderTestsItem(item);
+  document.addEventListener("progress-synced", () => renderTestsItem(item));
+});
 
 // ---------- service worker: офлайн-доступ ----------
 

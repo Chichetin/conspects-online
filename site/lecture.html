@@ -14,7 +14,7 @@ await mermaid.run({ querySelector: "pre.mermaid" });
 </script>$endif$
 </head>
 <body class="lecture-page$if(kind)$ kind-$kind$$endif$" data-minutes="$minutes$"$if(course-color)$ style="--course: $course-color$"$endif$>
-<header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a></header>
+<header class="site-bar"><a class="brand" href="$root$">Конспекты</a><span class="sep">/</span><a href="$root$$course-slug$/">$course-title$</a><a class="bar-tests" href="$root$tests/">Тесты</a></header>
 
 <div class="layout">
 <aside class="toc" id="toc">
@@ -32,7 +32,7 @@ $if(meta-line)$<p class="meta-line">$meta-line$</p>$endif$
 
 $body$
 
-$if(quiz)$<a class="quiz-cta" href="quiz.html"><span class="quiz-cta-title">Проверить себя</span><span class="quiz-cta-text">Тест по конспекту: лёгкий, средний и сложный уровни, у каждого вопроса — разбор и ссылка на раздел.</span></a>$endif$
+$if(quiz)$<a class="quiz-cta" href="quiz.html"><span class="quiz-cta-title">Проверить себя</span><span class="quiz-cta-text">$if(lab)$Репетиция защиты: лёгкий, средний и сложный уровни, у каждого вопроса — разбор и ссылка на вопрос учебника.$else$Тест по конспекту: лёгкий, средний и сложный уровни, у каждого вопроса — разбор и ссылка на раздел.$endif$</span></a>$endif$
 
 <nav class="pager">
 $if(prev-href)$<a class="prev" href="$prev-href$"><span>← Предыдущая</span>$prev-title$</a>$else$<span></span>$endif$
