@@ -218,7 +218,8 @@ renderSettings();
 // Устройства одного читателя делят случайный код синхронизации — он же пароль. Сервер (server/sync_server.py)
 // хранит последнюю версию всех записей pos: и quiz:, а сливает их клиент: по каждой лекции побеждает более свежая
 // запись (t), прочитанные блоки объединяются — кроме тех, что старше сброса прогресса (r) в свежей записи.
-// В результатах теста по каждому уровню берётся лучший счёт с обоих устройств и последний — с более свежего.
+// В результатах теста по каждому уровню берётся лучший счёт с обоих устройств и последний — с более свежего,
+// а текущее прохождение уровня (ответы) — целиком с того устройства, где оно новее.
 // Настройки вида (тема, шрифт) не синхронизируются: на телефоне и компьютере они обычно разные.
 
 const SYNC_URL = "https://193-124-112-110.sslip.io/sync";
@@ -252,7 +253,13 @@ function mergeQuiz(a, b) {
     const fresh = (x.t || 0) >= (y.t || 0) ? x : y;
     levels[lv] = { ...fresh, best: Math.max(x.best || 0, y.best || 0) };
   }
-  return { t: Math.max(a.t || 0, b.t || 0), levels };
+  const cur = {}; // текущее прохождение уровня — целиком с того устройства, где оно свежее
+  for (const lv of new Set([...Object.keys(a.cur || {}), ...Object.keys(b.cur || {})])) {
+    const x = a.cur?.[lv];
+    const y = b.cur?.[lv];
+    cur[lv] = !x || !y ? x || y : (x.t || 0) >= (y.t || 0) ? x : y;
+  }
+  return { t: Math.max(a.t || 0, b.t || 0), levels, cur };
 }
 
 function localProgress() {
@@ -1293,9 +1300,11 @@ function prefetchForOffline() {
 
 // ---------- тест для самопроверки (quiz.html, разметка — site/quiz.lua) ----------
 // Уровни — вкладки. Вопрос проверяется сразу: выбор и число — автоматически, открытый — самооценкой по эталону
-// (знал 1 / частично 0,5 / не знал 0). Варианты перемешиваются при каждом прохождении. Когда отвечены все
-// вопросы уровня, результат сохраняется в quiz:<путь лекции> — { t, levels: { easy: { best, last, n, t } } } —
-// и синхронизируется вместе с прогрессом чтения.
+// (знал 1 / частично 0,5 / не знал 0). Варианты перемешиваются в начале каждого прохождения.
+// Всё хранится в quiz:<путь лекции> и синхронизируется вместе с прогрессом чтения:
+//   levels: { easy: { best, last, n, t } } — результат уровня, когда отвечены все вопросы;
+//   cur: { easy: { t, order: { e1: [индексы вариантов] }, ans: { e1: { pick }, m5: { num }, m4: { text, shown, grade } } } }
+//   — текущее прохождение, чтобы после перезагрузки или на другом устройстве продолжить с того же места.
 
 function initQuiz() {
   renderMath();
@@ -1305,22 +1314,33 @@ function initQuiz() {
   const key = quizKey(pagePath(new URL("./", location.href)));
   body.classList.add("quiz-ready");
 
-  const shuffle = (list) => {
-    for (let i = list.length - 1; i > 0; i--) {
+  const load = () => {
+    const rec = store.json(key) || {};
+    rec.levels ||= {};
+    rec.cur ||= {};
+    return rec;
+  };
+  const shuffled = (n) => {
+    const list = [...Array(n).keys()];
+    for (let i = n - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
     return list;
   };
+  const isOrder = (order, n) => Array.isArray(order) && order.length === n && new Set(order).size === n
+    && order.every((i) => Number.isInteger(i) && i >= 0 && i < n);
 
-  function setupQuestion(q, onChange) {
+  // Вопрос: clear() — пустое состояние, get() — ответ для сохранения (или null), set(ответ) — восстановить.
+  // У выбора ещё order и arrange(order). Действия читателя вызывают save() — сохранить уровень.
+  function setupQuestion(q, save) {
     const type = q.dataset.type;
     const keyBox = q.querySelector(".quiz-key");
     const result = el("p", { class: "quiz-result", role: "status" });
     const actions = el("div", { class: "quiz-actions" });
     keyBox.before(actions, result);
     if (type === "single" || type === "multi") q.querySelector(".quiz-answer")?.remove(); // верные отметятся в вариантах
-    const item = { score: null, self: type === "open" };
+    const item = { id: q.id, score: null, self: type === "open", get: () => null, set: () => {} };
 
     function reveal(on) {
       keyBox.hidden = !on;
@@ -1330,22 +1350,22 @@ function initQuiz() {
       item.score = score;
       result.textContent = text;
       result.className = `quiz-result ${cls}`;
-      q.classList.toggle("answered", score != null);
-      onChange();
+      q.classList.add("answered");
     }
 
+    let clear = () => {};
     if (type === "single" || type === "multi") {
       const opts = q.querySelector(".quiz-options");
-      const options = [...opts.children].map((o) => {
+      const options = [...opts.children].map((o, i) => {
         const input = el("input", { type: type === "multi" ? "checkbox" : "radio", name: q.id });
         o.replaceChildren(el("label", { class: "quiz-choice" }, input, el("span", { class: "quiz-choice-text" }, ...o.childNodes)));
-        return { o, input, ok: o.dataset.ok === "1" };
+        return { o, input, i, ok: o.dataset.ok === "1" };
       });
       if (type === "multi") opts.before(el("p", { class: "quiz-hint", text: "Выберите все верные варианты." }));
       const check = el("button", { type: "button", class: "quiz-btn", text: "Проверить", disabled: true });
       actions.append(check);
       opts.addEventListener("change", () => { check.disabled = !options.some((x) => x.input.checked); });
-      check.addEventListener("click", () => {
+      const grade = () => {
         const right = options.every((x) => x.input.checked === x.ok);
         options.forEach((x) => {
           x.input.disabled = true;
@@ -1356,9 +1376,19 @@ function initQuiz() {
         check.hidden = true;
         reveal(true);
         finish(right ? 1 : 0, right ? "Верно" : "Неверно", right ? "ok" : "bad");
-      });
-      item.reset = () => {
-        opts.replaceChildren(...shuffle(options.map((x) => x.o)));
+      };
+      check.addEventListener("click", () => { grade(); save(); });
+      item.arrange = (order) => {
+        item.order = isOrder(order, options.length) ? order : shuffled(options.length);
+        opts.replaceChildren(...item.order.map((i) => options[i].o));
+      };
+      item.get = () => item.score == null ? null : { pick: options.filter((x) => x.input.checked).map((x) => x.i) };
+      item.set = (a) => {
+        if (!Array.isArray(a.pick) || !a.pick.length) return;
+        options.forEach((x) => { x.input.checked = a.pick.includes(x.i); });
+        grade();
+      };
+      clear = () => {
         options.forEach((x) => {
           x.input.checked = false;
           x.input.disabled = false;
@@ -1375,10 +1405,9 @@ function initQuiz() {
       const check = el("button", { type: "button", class: "quiz-btn", text: "Проверить" });
       box.append(input);
       actions.append(check);
-      const run = () => {
-        const v = Number(input.value.replace(/\s/g, "").replace(",", "."));
-        if (!input.value.trim() || Number.isNaN(v)) { toast("Введите число"); input.focus(); return; }
-        const right = Math.abs(v - answer) <= tol + 1e-9;
+      const parse = (s) => (s.trim() ? Number(s.replace(/\s/g, "").replace(",", ".")) : NaN);
+      const grade = () => {
+        const right = Math.abs(parse(input.value) - answer) <= tol + 1e-9;
         input.disabled = true;
         input.classList.toggle("ok", right);
         input.classList.toggle("bad", !right);
@@ -1386,9 +1415,20 @@ function initQuiz() {
         reveal(true);
         finish(right ? 1 : 0, right ? "Верно" : "Неверно", right ? "ok" : "bad");
       };
+      const run = () => {
+        if (Number.isNaN(parse(input.value))) { toast("Введите число"); input.focus(); return; }
+        grade();
+        save();
+      };
       check.addEventListener("click", run);
       input.addEventListener("keydown", (e) => { if (e.key === "Enter") run(); });
-      item.reset = () => {
+      item.get = () => item.score == null ? null : { num: input.value };
+      item.set = (a) => {
+        if (typeof a.num !== "string" || Number.isNaN(parse(a.num))) return;
+        input.value = a.num;
+        grade();
+      };
+      clear = () => {
         input.value = "";
         input.disabled = false;
         input.classList.remove("ok", "bad");
@@ -1398,20 +1438,38 @@ function initQuiz() {
       const box = q.querySelector(".quiz-open");
       const text = el("textarea", { class: "quiz-textarea", rows: 4, placeholder: "Ответьте своими словами — или в уме, если не хочется писать" });
       const show = el("button", { type: "button", class: "quiz-btn", text: "Показать эталон" });
-      const grades = [["Знал", 1, "ok"], ["Частично", 0.5, "part"], ["Не знал", 0, "bad"]].map(([label, score, cls]) =>
-        el("button", { type: "button", class: "quiz-grade", "aria-pressed": "false", text: label, onclick: (e) => {
-          grades.forEach((g) => g.setAttribute("aria-pressed", String(g === e.currentTarget)));
-          finish(score, `Самооценка: ${label.toLowerCase()}`, cls);
-        } }));
+      const GRADES = [["Знал", 1, "ok"], ["Частично", 0.5, "part"], ["Не знал", 0, "bad"]];
+      const pick = (i) => {
+        grades.forEach((g, j) => g.setAttribute("aria-pressed", String(i === j)));
+        finish(GRADES[i][1], `Самооценка: ${GRADES[i][0].toLowerCase()}`, GRADES[i][2]);
+      };
+      const grades = GRADES.map(([label], i) => el("button", {
+        type: "button", class: "quiz-grade", "aria-pressed": "false", text: label, onclick: () => { pick(i); save(); },
+      }));
       const gradeRow = el("div", { class: "quiz-grades", hidden: true }, el("span", { text: "Сравните с ключевыми пунктами:" }), ...grades);
       box.append(text);
       actions.append(show, gradeRow);
-      show.addEventListener("click", () => {
+      const showKey = () => {
         show.hidden = true;
         gradeRow.hidden = false;
         reveal(true);
-      });
-      item.reset = () => {
+      };
+      show.addEventListener("click", () => { showKey(); save(); });
+      let typing;
+      text.addEventListener("input", () => { clearTimeout(typing); typing = setTimeout(save, 600); });
+      item.get = () => {
+        const shown = !show.hidden;
+        if (!text.value && !shown) return null;
+        return { text: text.value, shown, grade: item.score };
+      };
+      item.set = (a) => {
+        text.value = typeof a.text === "string" ? a.text : "";
+        if (!a.shown) return;
+        showKey();
+        const i = GRADES.findIndex((g) => g[1] === a.grade);
+        if (i >= 0) pick(i);
+      };
+      clear = () => {
         text.value = "";
         show.hidden = false;
         gradeRow.hidden = true;
@@ -1419,26 +1477,23 @@ function initQuiz() {
       };
     }
 
-    const reset = item.reset || (() => {});
-    item.reset = () => {
-      reset();
+    item.clear = () => {
+      clear();
       reveal(false);
       item.score = null;
       result.textContent = "";
       result.className = "quiz-result";
       q.classList.remove("answered");
     };
-    item.reset();
     return item;
   }
 
-  const saved = () => store.json(key) || { levels: {} };
   const tabs = el("div", { class: "quiz-tabs", role: "tablist", "aria-label": "Уровень сложности" });
   levels[0].before(tabs);
   const state = levels.map((level) => {
     const h = level.querySelector("h2");
-    const st = { level, id: level.id, title: h.textContent.trim(), done: false };
-    st.items = [...level.querySelectorAll(".quiz-q")].map((q) => setupQuestion(q, () => update(st)));
+    const st = { level, id: level.id, title: h.textContent.trim(), curT: 0, savedLast: null };
+    st.items = [...level.querySelectorAll(".quiz-q")].map((q) => setupQuestion(q, () => save(st)));
     st.tab = el("button", { type: "button", role: "tab", class: "quiz-tab", onclick: () => select(st) },
       el("span", { class: "quiz-tab-name", text: st.title.replace(/\s*уровень$/i, "") }),
       el("span", { class: "quiz-tab-score" }));
@@ -1449,46 +1504,83 @@ function initQuiz() {
     return st;
   });
 
+  const total = (st) => st.items.reduce((s, x) => s + (x.score ?? 0), 0);
+  const complete = (st) => st.items.every((x) => x.score != null);
+
+  // сохранить текущее прохождение уровня; результат — только когда отвечено всё и счёт изменился
+  function save(st) {
+    const rec = load();
+    const order = {};
+    const ans = {};
+    for (const x of st.items) {
+      if (x.order) order[x.id] = x.order;
+      const a = x.get();
+      if (a) ans[x.id] = a;
+    }
+    const now = Date.now();
+    st.curT = now;
+    rec.cur[st.id] = { t: now, order, ans };
+    rec.t = now;
+    if (complete(st)) {
+      const last = total(st) / st.items.length;
+      if (st.savedLast !== last) {
+        const prev = rec.levels[st.id];
+        rec.levels[st.id] = { best: Math.max(prev?.best || 0, last), last, n: st.items.length, t: now };
+        st.savedLast = last;
+      }
+    } else {
+      st.savedLast = null;
+    }
+    store.set(key, JSON.stringify(rec));
+    render(st);
+  }
+
+  // показать уровень по сохранённому прохождению (при открытии и после синхронизации)
+  function restore(st) {
+    const cur = load().cur[st.id];
+    st.curT = cur?.t || 0;
+    for (const x of st.items) {
+      x.clear();
+      x.arrange?.(cur?.order?.[x.id]);
+      const a = cur?.ans?.[x.id];
+      if (a && typeof a === "object") x.set(a);
+    }
+    st.savedLast = complete(st) ? total(st) / st.items.length : null;
+    render(st);
+  }
+
+  function restart(st) {
+    st.items.forEach((x) => { x.clear(); x.arrange?.(null); });
+    save(st);
+    st.level.scrollIntoView();
+  }
+
   function renderTab(st) {
-    const rec = saved().levels?.[st.id];
+    const rec = load().levels[st.id];
     st.tab.querySelector(".quiz-tab-score").textContent = rec
       ? `${fmtScore(rec.best * rec.n)}/${rec.n}` : `${st.items.length} вопр.`;
     st.tab.classList.toggle("has-score", Boolean(rec));
   }
 
-  function update(st) {
-    const answered = st.items.filter((x) => x.score != null);
+  function render(st) {
+    renderTab(st);
     const n = st.items.length;
-    const total = answered.reduce((s, x) => s + x.score, 0);
-    if (answered.length < n) {
-      st.done = false;
-      st.footer.replaceChildren(el("p", { class: "quiz-progress", text: `Отвечено ${answered.length} из ${n}` }));
+    const answered = st.items.filter((x) => x.score != null).length;
+    if (answered < n) {
+      st.footer.replaceChildren(el("p", { class: "quiz-progress", text: `Отвечено ${answered} из ${n}` }),
+        answered ? el("div", { class: "quiz-actions" },
+          el("button", { type: "button", class: "quiz-btn quiz-btn-alt", text: "Начать заново", onclick: () => restart(st) })) : "");
       return;
     }
     const self = st.items.filter((x) => x.self).length;
-    const rec = saved();
-    rec.levels ||= {};
-    const prev = rec.levels[st.id];
-    const now = Date.now();
-    rec.levels[st.id] = { best: Math.max(prev?.best || 0, total / n), last: total / n, n, t: now };
-    rec.t = now;
-    store.set(key, JSON.stringify(rec));
-    st.done = true;
     const next = state[state.indexOf(st) + 1];
     st.footer.replaceChildren(
-      el("p", { class: "quiz-total" }, el("b", { text: `${fmtScore(total)} из ${n}` }),
+      el("p", { class: "quiz-total" }, el("b", { text: `${fmtScore(total(st))} из ${n}` }),
         self ? ` — открытые вопросы (${self}) по самооценке` : ""),
       el("div", { class: "quiz-actions" },
         el("button", { type: "button", class: "quiz-btn", text: "Пройти заново", onclick: () => restart(st) }),
         next ? el("button", { type: "button", class: "quiz-btn quiz-btn-alt", text: `${next.title} →`, onclick: () => { select(next); scrollTo({ top: 0 }); } }) : ""),
     );
-    renderTab(st);
-  }
-
-  function restart(st) {
-    st.items.forEach((x) => x.reset());
-    update(st);
-    st.level.scrollIntoView();
   }
 
   function select(st, push = true) {
@@ -1499,8 +1591,17 @@ function initQuiz() {
     if (push) history.replaceState(history.state, "", `#${st.id}`);
   }
 
-  state.forEach((st) => { renderTab(st); update(st); });
-  document.addEventListener("progress-synced", () => state.forEach(renderTab));
+  state.forEach(restore);
+  // другое устройство прислало более свежее прохождение — показать его
+  document.addEventListener("progress-synced", (e) => {
+    if (!e.detail.includes(key)) return;
+    state.forEach((st) => {
+      if ((load().cur[st.id]?.t || 0) !== st.curT) restore(st);
+      else renderTab(st);
+    });
+  });
   const fromHash = state.find((st) => `#${st.id}` === location.hash);
-  select(fromHash || state.find((st) => !saved().levels?.[st.id]) || state[0], false);
+  const unfinished = state.find((st) => !complete(st) && st.items.some((x) => x.score != null))
+    || state.find((st) => !load().levels[st.id]);
+  select(fromHash || unfinished || state[0], false);
 }
