@@ -404,12 +404,14 @@ a.footnote-ref { text-decoration: none; padding: .3em .3em; margin: -.3em -.15em
 .pager span { display: block; font-weight: 400; font-size: .8rem; color: var(--muted); margin-bottom: .2rem; }
 .pager .next { text-align: right; grid-column: 2; }
 
-/* ---------- быстро повторить: только помеченное классом rv (см. conspect.lua) ---------- */
-[data-review] main section:not(.rv) > :not(h2, h3, section, .rv, :has(.rv)),
-[data-review] main section:not(.rv) > :is(ul, ol) > li:not(:has(.rv)),
-[data-review] main section:not(.rv, :has(.rv)),
-[data-review] main .footnotes { display: none; }
-[data-review] main .rv:not(section, .box) {
+/* ---------- быстро повторить: только помеченное классом rv (см. conspect.lua) ----------
+   data-review инлайн-скрипт ставит на всех страницах, поэтому правила — только для страниц конспектов:
+   иначе прятались бы карточки курсов на главной, разделы кабинета и уровни теста */
+[data-review] .lecture-page main section:not(.rv) > :not(h2, h3, section, .rv, :has(.rv)),
+[data-review] .lecture-page main section:not(.rv) > :is(ul, ol) > li:not(:has(.rv)),
+[data-review] .lecture-page main section:not(.rv, :has(.rv)),
+[data-review] .lecture-page main .footnotes { display: none; }
+[data-review] .lecture-page main .rv:not(section, .box) {
   border-left: 3px solid var(--tint-strong); padding-left: .8rem;
 }
 
