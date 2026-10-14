@@ -7,7 +7,9 @@ const RUNTIME = "runtime"; // то же имя использует app.js, ко
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(SHELL)
-      .then((c) => c.addAll(["./", "assets/style.css", "assets/looks.css", "assets/app.js", "search.json", "manifest.webmanifest"]))
+      // reload — мимо HTTP-кэша браузера, иначе в новый кэш может попасть старая версия файла
+      .then((c) => c.addAll(["./", "assets/style.css", "assets/looks.css", "assets/app.js", "search.json", "manifest.webmanifest"]
+        .map((u) => new Request(u, { cache: "reload" }))))
       .then(() => self.skipWaiting()),
   );
 });
@@ -23,7 +25,9 @@ self.addEventListener("activate", (e) => {
 async function networkFirst(req) {
   const cache = await caches.open(RUNTIME);
   try {
-    const res = await fetch(req);
+    // no-cache — сверить с сервером (304, если не менялось): GitHub Pages разрешает держать файл 10 минут,
+    // и после обновления сайта страница и её скрипт могли бы прийти из разных версий
+    const res = await fetch(req, { cache: "no-cache" });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {

@@ -54,6 +54,12 @@ def look_script() -> str:
             "document.head.appendChild(f)})()")
 
 
+def asset(name: str) -> str:
+    """Путь к стилю или скрипту с версией по содержимому: GitHub Pages разрешает кэшировать файлы 10 минут,
+    и без версии новая страница могла получить старый app.js (например, кабинет без кода кабинета)."""
+    return f"assets/{name}?v={hashlib.sha256((SITE / name).read_bytes()).hexdigest()[:10]}"
+
+
 def head(root: str) -> str:
     """Общая часть <head>. Инлайн-скрипт применяет настройки чтения до отрисовки, чтобы не было вспышки."""
     return f"""<meta name="viewport" content="width=device-width, initial-scale=1">
@@ -66,9 +72,9 @@ def head(root: str) -> str:
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <noscript><link rel="stylesheet" href="{FONTS}"></noscript>
-<link rel="stylesheet" href="{root}assets/style.css">
-<link rel="stylesheet" href="{root}assets/looks.css">
-<script defer src="{root}assets/app.js"></script>"""
+<link rel="stylesheet" href="{root}{asset('style.css')}">
+<link rel="stylesheet" href="{root}{asset('looks.css')}">
+<script defer src="{root}{asset('app.js')}"></script>"""
 
 
 # порядок в списке курса и подписи по умолчанию
