@@ -6,13 +6,15 @@ const doc = document.documentElement;
 const body = document.body;
 const isLecture = body.classList.contains("lecture-page");
 const isQuiz = body.classList.contains("quiz-page");
+const isCabinet = body.classList.contains("me-page");
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const touch = matchMedia("(pointer: coarse)");
 const narrow = matchMedia("(max-width: 699px)");
 
 // localStorage может быть недоступен (приватный режим, запрет cookies) — тогда просто ничего не помним.
-// Изменение прогресса (ключи pos: и результаты тестов quiz:) поднимает флаг dirty — синхронизация отправит его на сервер.
-const SYNCED = /^(pos|quiz):/;
+// Изменение прогресса (ключи pos:, результаты тестов quiz: и настройки кабинета prefs:) поднимает флаг dirty —
+// синхронизация отправит его на сервер.
+const SYNCED = /^(pos|quiz|prefs):/;
 const store = {
   dirty: false,
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -43,6 +45,7 @@ function el(tag, attrs = {}, ...children) {
 }
 
 const ICONS = {
+  user: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>',
   search: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></svg>',
   link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4.5 4.5 0 0 0 6.4 0l3-3a4.5 4.5 0 0 0-6.4-6.4l-1 1"/><path d="M14 10a4.5 4.5 0 0 0-6.4 0l-3 3a4.5 4.5 0 0 0 6.4 6.4l1-1"/></svg>',
   up: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>',
@@ -137,8 +140,45 @@ const settingsButton = el("button", {
   class: "icon-btn aa", type: "button", "aria-label": "Настройки чтения", title: "Настройки чтения",
   "aria-controls": "settings", "aria-expanded": "false", text: "Aa",
 });
+const cabinetLink = el("a", { class: "icon-btn bar-me", href: new URL("me/", ROOT).href, "aria-label": "Личный кабинет", title: "Личный кабинет", html: ICONS.user });
 // ссылка «Тесты» из шаблона — справа, рядом с кнопками
-bar.append(el("div", { class: "bar-tools" }, ...bar.querySelectorAll(".bar-tests"), searchButton, settingsButton));
+bar.append(el("div", { class: "bar-tools" }, ...bar.querySelectorAll(".bar-tests"), cabinetLink, searchButton, settingsButton));
+
+// ---------- скрытые дисциплины (выбираются в личном кабинете) ----------
+// prefs:courses = { t, hidden: [slug курса] }; синхронизируется, свежая запись побеждает целиком.
+// Прячет их CSS-правило в <style id="hidden-courses"> (первый раз его пишет инлайн-скрипт в <head>, до отрисовки):
+// карточки курсов на главной и на странице «Тесты»; поиск и «Продолжить чтение» пропускают их сами.
+
+const PREFS_COURSES = "prefs:courses";
+const COURSE_SLUG = /^[\w-]+$/;
+
+function hiddenCourses() {
+  const hidden = store.json(PREFS_COURSES)?.hidden;
+  return new Set(Array.isArray(hidden) ? hidden.filter((c) => COURSE_SLUG.test(c)) : []);
+}
+
+function applyHiddenCourses() {
+  const hidden = [...hiddenCourses()];
+  const style = document.getElementById("hidden-courses") || document.head.appendChild(el("style", { id: "hidden-courses" }));
+  style.textContent = hidden.length ? `${hidden.map((c) => `.course[data-course="${c}"]`).join()}{display:none}` : "";
+  const main = document.querySelector("main");
+  const shown = hidden.filter((c) => document.querySelector(`.course[data-course="${c}"]`)).length;
+  document.querySelector(".hidden-note")?.remove();
+  if (shown && main) {
+    main.append(el("p", { class: "hidden-note" }, `Скрыто дисциплин: ${shown} · `,
+      el("a", { href: cabinetLink.href, text: "показать в кабинете" })));
+  }
+}
+
+function setCourseHidden(slug, hide) {
+  const hidden = hiddenCourses();
+  if (hide) hidden.add(slug); else hidden.delete(slug);
+  store.set(PREFS_COURSES, JSON.stringify({ t: Date.now(), hidden: [...hidden] }));
+  applyHiddenCourses();
+}
+
+applyHiddenCourses();
+document.addEventListener("progress-synced", (e) => e.detail.includes(PREFS_COURSES) && applyHiddenCourses());
 
 const FONT_STEPS = ["-1", "0", "1", "2"];
 const THEMES = [["auto", "Авто"], ["light", "Светлая"], ["dark", "Тёмная"]];
@@ -221,6 +261,7 @@ renderSettings();
 // запись (t), прочитанные блоки объединяются — кроме тех, что старше сброса прогресса (r) в свежей записи.
 // В результатах теста по каждому уровню берётся лучший счёт с обоих устройств и последний — с более свежего,
 // а текущее прохождение уровня (ответы) — целиком с того устройства, где оно новее.
+// Настройки кабинета (prefs:) — целиком с того устройства, где их меняли позже.
 // Настройки вида (тема, шрифт) не синхронизируются: на телефоне и компьютере они обычно разные.
 
 const SYNC_URL = "https://193-124-112-110.sslip.io/sync";
@@ -242,6 +283,11 @@ function mergeRecord(a, b) {
     out.pct = Math.max(fresh.pct || 0, old.pct || 0);
   }
   return out;
+}
+
+function mergeFresh(a, b) {
+  if (!a || !b) return a || b;
+  return (a.t || 0) >= (b.t || 0) ? a : b;
 }
 
 function mergeQuiz(a, b) {
@@ -292,7 +338,8 @@ async function runSync() {
     const merged = {};
     const changed = [];
     for (const k of new Set([...Object.keys(local), ...Object.keys(remote.data)])) {
-      merged[k] = (k.startsWith("quiz:") ? mergeQuiz : mergeRecord)(local[k], remote.data[k]);
+      const merge = k.startsWith("quiz:") ? mergeQuiz : k.startsWith("prefs:") ? mergeFresh : mergeRecord;
+      merged[k] = merge(local[k], remote.data[k]);
       if (JSON.stringify(merged[k]) !== JSON.stringify(local[k])) {
         store.set(k, JSON.stringify(merged[k]));
         changed.push(k);
@@ -397,7 +444,14 @@ function renderSync() {
   );
 }
 
-settings.append(el("div", { class: "set-block sync" }, el("span", { text: "Синхронизация" }), syncStatus, syncActions, syncQr));
+// в кабинете синхронизация — отдельным разделом страницы, на остальных страницах — в меню «Aa»
+const cabinetSync = document.getElementById("me-sync");
+if (cabinetSync) {
+  cabinetSync.append(el("p", { class: "me-note", text: "Прогресс чтения, результаты тестов и выбор дисциплин — общие для всех устройств с одним кодом." }),
+    syncStatus, syncActions, syncQr);
+} else {
+  settings.append(el("div", { class: "set-block sync" }, el("span", { text: "Синхронизация" }), syncStatus, syncActions, syncQr));
+}
 renderSync();
 
 // ссылка вида …/#sync=<код> с другого устройства включает синхронизацию
@@ -477,7 +531,9 @@ function runSearch(data, query) {
   const words = norm(query).split(/\s+/).filter(Boolean);
   if (!words.length) return null;
   const found = [];
+  const hidden = hiddenCourses();
   for (const s of data.sections) {
+    if (hidden.has(data.lectures[s[0]][0].split("/")[0])) continue;
     let score = 0;
     for (const w of words) {
       const inH = s.nh.includes(w);
@@ -569,7 +625,7 @@ searchButton.addEventListener("click", openSearch);
 searchButton.addEventListener("pointerenter", loadIndex, { once: true });
 
 const lead = document.querySelector(".lead");
-if (lead) {
+if (lead && !isCabinet) {
   lead.after(el("button", { type: "button", class: "search-field", onclick: openSearch },
     el("span", { html: ICONS.search }), "Поиск по всем конспектам"));
 }
@@ -633,7 +689,8 @@ if (!isLecture) {
       renderLecture(a, mark);
     });
     const { saved, done } = renderLecture(a, mark);
-    if (saved.t && saved.p > 0.03 && !done && (!last || saved.t > last.saved.t)) last = { a, saved };
+    const slug = a.closest(".course[data-course]")?.dataset.course;
+    if (saved.t && saved.p > 0.03 && !done && !hiddenCourses().has(slug) && (!last || saved.t > last.saved.t)) last = { a, saved };
     document.addEventListener("progress-synced", () => renderLecture(a, mark));
     if (a.dataset.quiz) {
       renderQuizScore(a);
@@ -664,6 +721,10 @@ function renderQuizScore(a) {
   }));
 }
 
+// сколько вопросов уровня отвечено в текущем прохождении (у открытого — когда поставлена самооценка)
+const answeredCount = (rec, lv) => Object.values(rec.cur?.[lv]?.ans || {})
+  .filter((x) => x && (x.pick || x.num != null || x.grade != null)).length;
+
 // страница «Тесты»: на кнопке уровня — лучший результат («✓ 13/14»), незаконченное прохождение («5/15 …»)
 // или число вопросов (его пишет build.py)
 function renderTestsItem(item) {
@@ -672,8 +733,7 @@ function renderTestsItem(item) {
     const lv = a.dataset.level;
     const n = Number(a.dataset.n);
     const best = rec.levels?.[lv];
-    const answered = Object.values(rec.cur?.[lv]?.ans || {})
-      .filter((x) => x && (x.pick || x.num != null || x.grade != null)).length;
+    const answered = answeredCount(rec, lv);
     const going = answered > 0 && answered < n;
     const score = a.querySelector(".tests-level-score");
     score.dataset.n ||= score.textContent;
@@ -698,6 +758,7 @@ if ("serviceWorker" in navigator && (location.protocol === "https:" || location.
 
 if (isLecture) initLecture();
 if (isQuiz) initQuiz();
+if (isCabinet) initCabinet();
 
 function initLecture() {
   const main = document.querySelector("main");
@@ -1631,4 +1692,161 @@ function initQuiz() {
   const unfinished = state.find((st) => !complete(st) && st.items.some((x) => x.score != null))
     || state.find((st) => !load().levels[st.id]);
   select(fromHash || unfinished || state[0], false);
+}
+
+// ---------- личный кабинет (me/, страницу собирает build.py) ----------
+// Переключатели дисциплин (prefs:courses) и статистика тестов по записям quiz: — только по показанным дисциплинам.
+// Список дисциплин и тестов с числом вопросов по уровням — JSON в #me-data.
+
+function initCabinet() {
+  const data = JSON.parse(document.getElementById("me-data").textContent);
+  const LEVEL_NAMES = { easy: "Лёгкий", medium: "Средний", hard: "Сложный" };
+  const WEAK = 0.7; // ниже — «стоит повторить»
+  const pct = (x) => `${Math.round(x * 100)}%`;
+  const bar = (x) => el("span", { class: "me-bar" }, el("span", { style: `width: ${(x * 100).toFixed(1)}%` }));
+
+  function ago(t) {
+    const today = new Date().setHours(0, 0, 0, 0);
+    if (t >= today) return "сегодня";
+    const days = Math.ceil((today - t) / 864e5);
+    if (days === 1) return "вчера";
+    if (days < 7) return `${days} дн. назад`;
+    return new Date(t).toLocaleDateString("ru", { day: "numeric", month: "long" });
+  }
+
+  // уровни тестов дисциплины: { course, item, lv, n, done (результат уровня или null), answered, going, href, t }
+  function levelsOf(course) {
+    return course.items.filter((item) => item.quiz).flatMap((item) => {
+      const href = new URL(item.href, location.href);
+      const rec = store.json(quizKey(pagePath(href))) || {};
+      return QUIZ_LEVELS.filter((lv) => item.quiz[lv]).map((lv) => {
+        const n = item.quiz[lv];
+        const done = rec.levels?.[lv] || null;
+        const answered = answeredCount(rec, lv);
+        const going = answered > 0 && answered < n;
+        return { course, item, lv, n, done, answered, going,
+          href: new URL(`quiz.html#${lv}`, href).href, t: Math.max(done?.t || 0, going ? rec.cur[lv].t || 0 : 0) };
+      });
+    });
+  }
+
+  function summary(levels) {
+    const passed = levels.filter((x) => x.done);
+    const questions = passed.reduce((s, x) => s + x.done.n, 0);
+    return {
+      total: levels.length, passed: passed.length,
+      avg: questions ? passed.reduce((s, x) => s + x.done.best * x.done.n, 0) / questions : null,
+    };
+  }
+
+  // кнопка уровня: лучший счёт с цветом по нему, незаконченное прохождение или «—»
+  function chip(x, withName = true) {
+    const name = withName ? el("span", { class: "me-chip-name", text: LEVEL_NAMES[x.lv] }) : "";
+    const grade = x.done ? (x.done.best >= 0.85 ? "good" : x.done.best >= WEAK ? "mid" : "weak") : x.going ? "going" : "none";
+    const text = x.going ? `${x.answered}/${x.n} …` : x.done ? `${fmtScore(x.done.best * x.done.n)}/${x.done.n}` : "—";
+    const title = [x.done && `Лучший результат: ${pct(x.done.best)}`, x.going && `Начато: отвечено ${x.answered} из ${x.n}`]
+      .filter(Boolean).join(" · ") || "Ещё не проходили";
+    return el("a", { class: `me-chip ${grade}`, href: x.href, title }, name, el("span", { class: "me-chip-score", text }));
+  }
+
+  function itemLine(x) {
+    return el("span", { class: "me-item" }, el("span", { class: "num", text: `${x.course.title} · ${x.item.label}` }),
+      el("span", { class: "t", text: x.item.title }));
+  }
+
+  const coursesBox = document.getElementById("me-courses");
+  const statsBox = document.getElementById("me-stats");
+  const statsHead = statsBox.querySelector("h2");
+  const courseList = el("ul", { class: "me-courses" });
+  coursesBox.append(courseList);
+
+  function renderCourses() {
+    const hidden = hiddenCourses();
+    courseList.replaceChildren(...data.map((c) => {
+      const shown = !hidden.has(c.slug);
+      return el("li", { class: `me-course${shown ? "" : " off"}`, style: `--course: ${c.color}` },
+        el("span", { class: "me-course-name" }, el("a", { href: new URL(`../${c.slug}/`, location.href).href, text: c.title }),
+          el("span", { class: "count", text: c.count })),
+        el("button", {
+          type: "button", class: "switch", role: "switch", "aria-checked": String(shown),
+          "aria-label": `Показывать «${c.title}»`, title: shown ? "Скрыть дисциплину" : "Показывать дисциплину",
+          onclick: () => { setCourseHidden(c.slug, shown); render(); },
+        }));
+    }));
+  }
+
+  function renderStats() {
+    const hidden = hiddenCourses();
+    const courses = data.filter((c) => !hidden.has(c.slug)).map((c) => ({ c, levels: levelsOf(c) }));
+    const all = courses.flatMap((x) => x.levels);
+    const out = [];
+    if (!all.length) {
+      out.push(el("p", { class: "me-note", text: hidden.size ? "В показанных дисциплинах тестов пока нет." : "Тестов пока нет." }));
+      statsBox.replaceChildren(statsHead, ...out);
+      return;
+    }
+    const sum = summary(all);
+    const going = all.filter((x) => x.going);
+    const lastT = Math.max(...all.map((x) => x.t));
+    out.push(el("div", { class: "me-tiles" },
+      el("div", { class: "me-tile" }, el("b", { text: `${sum.passed} из ${sum.total}` }), el("span", { text: "уровней пройдено" }), bar(sum.passed / sum.total)),
+      el("div", { class: "me-tile" }, el("b", { text: sum.avg == null ? "—" : pct(sum.avg) }), el("span", { text: "средний лучший результат" })),
+      el("div", { class: "me-tile" }, el("b", { text: String(going.length) }), el("span", { text: "начато и не закончено" })),
+      el("div", { class: "me-tile" }, el("b", { text: lastT ? ago(lastT) : "—" }), el("span", { text: "последний тест" })),
+    ));
+    if (!lastT) {
+      out.push(el("p", { class: "me-note" }, "Вы ещё не проходили тестов — начните со страницы ",
+        el("a", { href: new URL("../tests/", location.href).href, text: "«Тесты»" }), "."));
+    }
+
+    // по уровням сложности
+    out.push(el("h3", { text: "По уровням" }), el("div", { class: "me-levels" }, ...QUIZ_LEVELS.map((lv) => {
+      const s = summary(all.filter((x) => x.lv === lv));
+      return s.total ? el("div", { class: "me-level" }, el("span", { class: "me-level-name", text: LEVEL_NAMES[lv] }),
+        bar(s.passed / s.total), el("span", { class: "me-level-num", text: `${s.passed}/${s.total}${s.avg == null ? "" : ` · ${pct(s.avg)}`}` })) : "";
+    })));
+
+    // что дальше: незаконченные прохождения, потом слабые уровни — от худшего
+    const weak = all.filter((x) => x.done && !x.going && x.done.best < WEAK).sort((a, b) => a.done.best - b.done.best);
+    const todo = [...going.sort((a, b) => b.t - a.t), ...weak].slice(0, 6);
+    if (todo.length || sum.passed) {
+      out.push(el("h3", { text: "Стоит вернуться" }), todo.length
+        ? el("ul", { class: "me-list" }, ...todo.map((x) => el("li", {}, itemLine(x), chip(x))))
+        : el("p", { class: "me-note", text: `Незаконченных тестов нет, все пройденные уровни — на ${pct(WEAK)} и выше.` }));
+    }
+
+    // по дисциплинам: полоса пройденного и лучший результат каждого уровня каждого теста
+    out.push(el("h3", { text: "По дисциплинам" }));
+    for (const { c, levels } of courses) {
+      if (!levels.length) continue;
+      const s = summary(levels);
+      const items = [...new Set(levels.map((x) => x.item))];
+      out.push(el("div", { class: "me-stat-course", style: `--course: ${c.color}` },
+        el("div", { class: "me-stat-head" }, el("a", { href: new URL(`../${c.slug}/`, location.href).href, text: c.title }),
+          el("span", { class: "count", text: `${s.passed} из ${s.total}${s.avg == null ? "" : ` · ${pct(s.avg)}`}` })),
+        bar(s.passed / s.total),
+        el("ul", { class: "me-list" }, ...items.map((item) => {
+          const lv = levels.filter((x) => x.item === item);
+          return el("li", {}, el("a", { class: "me-item", href: new URL(item.href, location.href).href },
+            el("span", { class: "num", text: item.label }), el("span", { class: "t", text: item.title })),
+          el("span", { class: "me-chips" }, ...lv.map((x) => chip(x))));
+        }))));
+    }
+
+    // последние пройденные уровни
+    const recent = all.filter((x) => x.done?.t).sort((a, b) => b.done.t - a.done.t).slice(0, 5);
+    if (recent.length) {
+      out.push(el("h3", { text: "Недавно" }), el("ul", { class: "me-list" }, ...recent.map((x) => el("li", {},
+        el("span", { class: "me-when", text: ago(x.done.t) }), itemLine(x), chip(x)))));
+    }
+    if (hidden.size) out.push(el("p", { class: "me-note", text: "Скрытые дисциплины в статистике не учитываются." }));
+    statsBox.replaceChildren(statsHead, ...out);
+  }
+
+  function render() {
+    renderCourses();
+    renderStats();
+  }
+  render();
+  document.addEventListener("progress-synced", render);
 }

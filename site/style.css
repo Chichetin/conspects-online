@@ -86,7 +86,7 @@ html[data-fs="2"] { font-size: 125%; }
 
 /* Цвет курса задаётся inline (--course) на body и на карточке курса, поэтому производные считаются здесь,
    а не на :root — иначе все оттенки брались бы от цвета по умолчанию. --c — цвет курса на экране. */
-body, .course, .continue {
+body, .course, .continue, .me-course, .me-stat-course {
   --c: color-mix(in oklab, var(--course), white var(--c-lift));
   --tint: color-mix(in srgb, var(--c) var(--tint-mix), var(--bg));
   --tint-strong: color-mix(in srgb, var(--c) var(--tint-strong-mix), var(--bg));
@@ -134,6 +134,7 @@ svg { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-wi
 .site-bar .bar-tests { flex-shrink: 0; align-self: center; padding: .35rem .6rem; border-radius: 8px; font-weight: 700; }
 .site-bar .bar-tests:hover { background: var(--tint); }
 .tests-page .site-bar .bar-tests { color: var(--text); }
+.me-page .site-bar .bar-me { color: var(--text); background: var(--tint); }
 .bar-tools { margin-left: auto; display: flex; gap: .25rem; flex-shrink: 0; padding-left: .5rem; }
 .icon-btn {
   display: grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0;
@@ -241,6 +242,13 @@ svg { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-wi
   content: ""; position: absolute; left: 0; bottom: -1px; height: 2px; border-radius: 2px;
   width: calc(var(--read) * 100%); background: var(--c); opacity: .6;
 }
+/* семинар сразу под своей лекцией — с отступом и уголком от неё */
+.lectures li.paired, .tests-item.paired { position: relative; margin-left: 1.4rem; }
+.lectures li.paired::before, .tests-item.paired::before {
+  content: ""; position: absolute; left: -.95rem; top: -.2rem; width: .55rem; height: 1.45rem;
+  border: solid var(--tint-strong); border-width: 0 0 2px 2px; border-bottom-left-radius: 5px;
+}
+.hidden-note { margin: 2rem 0 0; font: .9rem var(--ui); color: var(--muted); text-align: center; }
 .list-page > main > .lectures { margin-top: 1.5rem; background: var(--surface); border-radius: 10px; box-shadow: var(--shadow); padding: 0 1.3rem; }
 
 /* ---------- страница лекции ---------- */
@@ -723,3 +731,62 @@ main :is(h2, h3):hover .read-mark, main .read-mark:focus-visible { opacity: 1; }
 .quiz-footer { margin: 2rem 0 0; padding: 1rem 1.2rem; border-radius: 10px; background: var(--tint); font-family: var(--ui); }
 .quiz-progress, .quiz-total { margin: 0; }
 .quiz-total b { font-size: 1.3rem; color: var(--c); }
+
+/* ---------- личный кабинет (me/) ---------- */
+.me-block {
+  margin-top: 2rem; padding: .4rem 1.3rem 1.1rem; font-family: var(--ui);
+  background: var(--surface); border-radius: 10px; box-shadow: var(--shadow);
+}
+.me-block h2 { margin: .9rem 0 .4rem; }
+.me-block h3 { margin: 1.7rem 0 .4rem; font: 700 .8rem var(--ui); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.me-note { color: var(--muted); font-size: .92rem; line-height: 1.5; margin: .3rem 0 .8rem; }
+.me-courses, .me-list { list-style: none; padding: 0; margin: 0; }
+.me-course { display: flex; align-items: center; gap: 1rem; padding: .7rem 0; }
+.me-course + .me-course { border-top: 1px solid var(--line); }
+.me-course-name { flex: 1; min-width: 0; display: flex; flex-direction: column; padding-left: .8rem; border-left: 4px solid var(--c); }
+.me-course-name a { color: var(--text); text-decoration: none; font-weight: 700; }
+.me-course-name a:hover { color: var(--c); }
+.me-course.off .me-course-name { opacity: .5; border-left-color: var(--line); }
+
+.me-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .6rem; margin-top: .8rem; }
+@media (min-width: 600px) { .me-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.me-tile { display: flex; flex-direction: column; gap: .15rem; padding: .7rem .8rem; border-radius: 8px; background: var(--qa); }
+.me-tile b { font-size: 1.35rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.me-tile > span { font-size: .8rem; line-height: 1.3; color: var(--muted); }
+.me-tile .me-bar { margin-top: .35rem; }
+.me-bar { display: block; height: 6px; border-radius: 3px; background: var(--line); overflow: hidden; }
+.me-bar > span { display: block; height: 100%; border-radius: inherit; background: var(--c); }
+
+.me-levels { display: grid; gap: .55rem; }
+.me-level { display: grid; grid-template-columns: 5.2rem minmax(0, 1fr) 6.5rem; align-items: center; gap: .8rem; font-size: .92rem; }
+.me-level-num { text-align: right; white-space: nowrap; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.me-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .8rem; padding: .55rem 0; }
+.me-list li + li { border-top: 1px solid var(--line); }
+.me-item { flex: 1 1 14rem; min-width: 0; display: flex; flex-direction: column; color: inherit; text-decoration: none; }
+a.me-item:hover .t { color: var(--c); }
+.me-item .num { font-size: .78rem; color: var(--muted); }
+.me-item .t { font-weight: 700; line-height: 1.3; }
+.me-when { min-width: 5.5rem; font-size: .8rem; color: var(--muted); }
+.me-chips { display: flex; flex-wrap: wrap; gap: .35rem; }
+.me-chip {
+  display: inline-flex; align-items: baseline; gap: .35rem; padding: .25rem .6rem; border-radius: 7px; white-space: nowrap;
+  border: 1px solid var(--line); background: var(--bg); color: var(--text); text-decoration: none; font-size: .82rem;
+}
+.me-chip:hover { border-color: var(--c); }
+.me-chip-name { font-weight: 700; }
+.me-chip-score { color: var(--muted); font-variant-numeric: tabular-nums; }
+.me-chip.good { border-color: color-mix(in srgb, var(--ok) 45%, var(--line)); background: color-mix(in srgb, var(--ok) 8%, var(--bg)); }
+.me-chip.good .me-chip-score { color: var(--ok); font-weight: 700; }
+.me-chip.mid .me-chip-score { color: var(--hl-nu); font-weight: 700; }
+.me-chip.weak { border-color: color-mix(in srgb, var(--bad) 45%, var(--line)); background: color-mix(in srgb, var(--bad) 7%, var(--bg)); }
+.me-chip.weak .me-chip-score { color: var(--bad); font-weight: 700; }
+.me-chip.going { border-color: color-mix(in srgb, var(--c) 50%, var(--line)); }
+.me-chip.going .me-chip-score { color: var(--c); font-weight: 700; }
+
+.me-stat-course { margin-top: .8rem; }
+.me-stat-course + .me-stat-course { margin-top: 1.6rem; }
+.me-stat-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; margin-bottom: .4rem; }
+.me-stat-head a { color: var(--text); text-decoration: none; font-weight: 700; }
+.me-stat-head a:hover { color: var(--c); }
+.me-stat-course .me-list { margin-top: .3rem; }

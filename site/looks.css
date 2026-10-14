@@ -22,7 +22,8 @@
     --accent: #e3949d; --link: #eaa4ac; --qa: #24211e; --ok: #9ccaa8; --float: 0 6px 24px rgba(0, 0, 0, .5);
   }
 }
-:root[data-look="book"] body, :root[data-look="book"] .course, :root[data-look="book"] .continue { --c: var(--accent); }
+:root[data-look="book"] body, :root[data-look="book"] .course, :root[data-look="book"] .continue,
+:root[data-look="book"] .me-course, :root[data-look="book"] .me-stat-course { --c: var(--accent); }
 :root[data-look="book"] body { line-height: 1.7; }
 :root[data-look="book"] .site-bar { border-bottom-color: transparent; font: 500 .8rem var(--ui); letter-spacing: .1em; text-transform: uppercase; }
 :root[data-look="book"] .site-bar .brand::before { display: none; }
@@ -130,6 +131,7 @@
 :root[data-look="term"] .lectures a { padding: .55rem 0 .55rem 1.6rem; }
 :root[data-look="term"] .lectures a::before { content: "├─"; position: absolute; left: 0; top: .55rem; color: var(--muted); font: .9rem/1.6 var(--ui); }
 :root[data-look="term"] .lectures li:last-child a::before { content: "└─"; }
+:root[data-look="term"] .lectures li.paired::before { display: none; }
 :root[data-look="term"] .lectures .t { font-family: var(--body); font-weight: 600; }
 :root[data-look="term"] .search-field { border-radius: 6px; box-shadow: none; }
 
@@ -224,7 +226,8 @@
     --accent: #ff3347; --link: #f2f2f2; --qa: #0b0b0b; --ok: #f2f2f2; --red: #ff3347;
   }
 }
-:root[data-look="swiss"] body, :root[data-look="swiss"] .course, :root[data-look="swiss"] .continue { --c: var(--red); --tint: color-mix(in srgb, var(--red) 10%, var(--bg)); }
+:root[data-look="swiss"] body, :root[data-look="swiss"] .course, :root[data-look="swiss"] .continue,
+:root[data-look="swiss"] .me-course, :root[data-look="swiss"] .me-stat-course { --c: var(--red); --tint: color-mix(in srgb, var(--red) 10%, var(--bg)); }
 :root[data-look="swiss"] body { font-size: 1.06rem; line-height: 1.6; }
 :root[data-look="swiss"] a { text-decoration-thickness: 2px; text-decoration-color: var(--red); }
 :root[data-look="swiss"] .site-bar { border-bottom: 3px solid var(--rule); background: var(--bg); backdrop-filter: none; }

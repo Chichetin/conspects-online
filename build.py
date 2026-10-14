@@ -4,7 +4,10 @@
 Папка content/<курс>/<N>/ — лекция, content/<курс>/seminar<N>/ — семинар (конспект как у лекции),
 content/<курс>/lab<N>/ — учебник к лабораторной (doc-kind: lab). Если рядом с конспектом лежит quiz.md
 (тест для самопроверки), рядом со страницей собирается quiz.html; в поиск он не попадает. Все тесты — на
-странице tests/: по каждой лекции, семинару и лабораторной — кнопки уровней.
+странице tests/: по каждой лекции, семинару и лабораторной — кнопки уровней. Страница me/ — личный кабинет:
+какие дисциплины показывать и статистика тестов (считает app.js по данным, которые build.py кладёт в страницу).
+
+Семинар стоит сразу после лекции на ту же тему (с тем же title), остальные семинары — после лекций.
 
     python build.py
     python -m http.server -d _site   # предпросмотр
@@ -42,6 +45,10 @@ def look_script() -> str:
             "try{s=localStorage}catch(e){}"
             "function g(k){try{return s.getItem(k)}catch(e){return null}}"
             '["theme","fs","review"].forEach(function(k){var v=g(k);if(v)d.dataset[k]=v});'
+            # скрытые в кабинете дисциплины прячутся до отрисовки (app.js обновляет этот же <style>)
+            'try{var h=JSON.parse(g("prefs:courses")).hidden.filter(function(c){return/^[\\w-]+$/.test(c)});'
+            'if(h.length){var st=document.createElement("style");st.id="hidden-courses";st.textContent=h.map(function(c)'
+            '{return\'.course[data-course="\'+c+\'"]\'}).join()+"{display:none}";document.head.appendChild(st)}}catch(e){}'
             f'var l=g("look");if(!LOOK_FONTS[l])l="{next(iter(LOOK_FONTS))}";d.dataset.look=l;'
             'var f=document.createElement("link");f.rel="stylesheet";f.href=LOOK_FONTS[l];f.id="look-fonts";'
             "document.head.appendChild(f)})()")
@@ -88,6 +95,25 @@ def quiz_counts(path: Path) -> dict[str, int] | None:
     return counts
 
 
+def same_topic(a: dict, b: dict) -> bool:
+    key = lambda l: " ".join(l["title"].lower().replace("ё", "е").split())
+    return bool(a["title"]) and key(a) == key(b)
+
+
+def arrange(lectures: list[dict]) -> list[dict]:
+    """Порядок в курсе: лекции по номеру, сразу после лекции — семинары на ту же тему (pair — их лекция),
+    затем семинары без пары и лабораторные, внутри вида — по номеру."""
+    kinds = {k: sorted((l for l in lectures if l["kind"] == k), key=lambda l: l["num"]) for k in KIND_ORDER}
+    seminars, out = kinds["seminar"], []
+    for lec in kinds["lecture"]:
+        out.append(lec)
+        for sem in [s for s in seminars if same_topic(s, lec)]:
+            sem["pair"] = lec
+            out.append(sem)
+            seminars.remove(sem)
+    return out + seminars + kinds["lab"]
+
+
 def read_lecture(d: Path) -> dict:
     text = (d / "summary.md").read_text()
     head = text.split("\n---", 1)[0]
@@ -132,9 +158,14 @@ def meta(l: dict) -> str:
     return " · ".join(parts)
 
 
+def pair_attr(l: dict) -> str:
+    """Семинар сразу под своей лекцией — с отступом, как продолжение её темы."""
+    return f' class="paired" title="Семинар к лекции {l["pair"]["num"]}"' if l.get("pair") else ""
+
+
 def lecture_list(lectures: list[dict], prefix: str) -> str:
     items = "\n".join(
-        f'<li><a href="{prefix}{l["dir"].name}/" data-n="{l["num"]:02d}"{' data-quiz="1"' if l["quiz"] else ""}>'
+        f'<li{pair_attr(l)}><a href="{prefix}{l["dir"].name}/" data-n="{l["num"]:02d}"{' data-quiz="1"' if l["quiz"] else ""}>'
         f'<span class="num">{meta(l)}</span>'
         f'<span class="t">{html.escape(l["title"])}</span>'
         "</a></li>"
@@ -227,11 +258,11 @@ def tests_page(courses: list[tuple[dict, list[dict]]]) -> str:
                     f'<a class="tests-level" href="{href}quiz.html#{lv}" data-level="{lv}" data-n="{n}">'
                     f'<span class="tests-level-name">{name}</span><span class="tests-level-score">{plural(n, "вопрос", "вопроса", "вопросов")}</span></a>'
                     for lv, name in level_names.items() if (n := l["quiz"].get(lv)))
-                items.append(f'<li class="tests-item" data-quiz="{href}">{head_html}<div class="tests-levels">{buttons}</div></li>')
+                items.append(f'<li class="tests-item{" paired" if l.get("pair") else ""}" data-quiz="{href}">{head_html}<div class="tests-levels">{buttons}</div></li>')
             else:
-                items.append(f'<li class="tests-item tests-none">{head_html}<span class="tests-empty">теста пока нет</span></li>')
+                items.append(f'<li class="tests-item tests-none{" paired" if l.get("pair") else ""}">{head_html}<span class="tests-empty">теста пока нет</span></li>')
         n_quiz = sum(bool(l["quiz"]) for l in lectures)
-        sections.append(f'<section class="course" style="--course: {course.get("color", "")}">\n'
+        sections.append(f'<section class="course" data-course="{course["slug"]}" style="--course: {course.get("color", "")}">\n'
                         f'<h2><a href="../{course["slug"]}/">{html.escape(course["title"])}</a>'
                         f'<span class="count">{plural(n_quiz, "тест", "теста", "тестов")}</span></h2>\n'
                         f'<ul class="tests">\n' + "\n".join(items) + "\n</ul>\n</section>")
@@ -240,6 +271,27 @@ def tests_page(courses: list[tuple[dict, list[dict]]]) -> str:
 <p class="lead">Проверить себя после чтения: по каждой лекции, семинару и лабораторной — лёгкий, средний и сложный уровни.
 У каждого вопроса — разбор и ссылка на раздел конспекта или вопрос учебника; к лабораторным тест — репетиция защиты.</p>
 {"".join(sections)}""", cls="tests-page")
+
+
+def cabinet_page(courses: list[tuple[dict, list[dict]]]) -> str:
+    """Личный кабинет me/: переключатели дисциплин, статистика тестов и синхронизация. Всё рисует app.js;
+    отсюда — список дисциплин и тестов с числом вопросов по уровням (JSON в #me-data)."""
+    data = [{"slug": c["slug"], "title": c["title"], "color": c.get("color", ""), "count": count_label(lectures),
+             "items": [{"href": f"../{c['slug']}/{src_name(l)}/", "label": l["label"], "title": l["title"],
+                        "quiz": l["quiz"]} for l in lectures]}
+            for c, lectures in courses]
+    payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    return page("Личный кабинет — Конспекты лекций", "../", f"""
+<h1>Личный кабинет</h1>
+<p class="lead">Какие дисциплины показывать и как идут тесты. Хранится на этом устройстве, а с синхронизацией —
+на всех ваших устройствах.</p>
+<noscript><p>Кабинету нужен JavaScript.</p></noscript>
+<section class="me-block" id="me-courses"><h2>Дисциплины</h2>
+<p class="me-note">Скрытые дисциплины не показываются на главной, на странице «Тесты», в поиске и в статистике.
+Сами конспекты остаются доступны по ссылкам.</p></section>
+<section class="me-block" id="me-stats"><h2>Статистика тестов</h2></section>
+<section class="me-block" id="me-sync"><h2>Синхронизация</h2></section>
+<script type="application/json" id="me-data">{payload}</script>""", cls="me-page")
 
 
 TEX_SYMBOLS = {"alpha": "α", "beta": "β", "gamma": "γ", "delta": "δ", "varepsilon": "ε", "epsilon": "ε",
@@ -361,8 +413,7 @@ def main() -> None:
     for course in courses:
         cdir = CONTENT / course["slug"]
         dirs = [d for d in cdir.iterdir() if (d / "summary.md").exists()] if cdir.exists() else []
-        # сначала лекции, потом лабораторные, внутри — по номеру
-        lectures = sorted((read_lecture(d) for d in dirs), key=lambda l: (KIND_ORDER.index(l["kind"]), l["num"]))
+        lectures = arrange([read_lecture(d) for d in dirs])
         if not lectures:
             continue
         all_lectures.append((course, lectures))
@@ -383,7 +434,7 @@ def main() -> None:
 <p class="kicker">Курс · {count}</p>
 <h1>{title}</h1>
 {lecture_list(lectures, "")}""", color))
-        sections.append(f'<section class="course" style="--course: {color}">\n'
+        sections.append(f'<section class="course" data-course="{course["slug"]}" style="--course: {color}">\n'
                         f'<h2><a href="{course["slug"]}/">{title}</a><span class="count">{count}</span></h2>\n'
                         f'{lecture_list(lectures, course["slug"] + "/")}\n</section>')
 
@@ -395,6 +446,8 @@ def main() -> None:
 {"".join(sections)}"""))
     (OUT / "tests").mkdir()
     (OUT / "tests" / "index.html").write_text(tests_page(all_lectures))
+    (OUT / "me").mkdir()
+    (OUT / "me" / "index.html").write_text(cabinet_page(all_lectures))
     (OUT / "search.json").write_text(json.dumps(search, ensure_ascii=False, separators=(",", ":")))
     write_pwa()
 
