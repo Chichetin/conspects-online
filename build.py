@@ -45,10 +45,13 @@ def look_script() -> str:
             "try{s=localStorage}catch(e){}"
             "function g(k){try{return s.getItem(k)}catch(e){return null}}"
             '["theme","fs","review"].forEach(function(k){var v=g(k);if(v)d.dataset[k]=v});'
-            # скрытые в кабинете дисциплины прячутся до отрисовки (app.js обновляет этот же <style>)
-            'try{var h=JSON.parse(g("prefs:courses")).hidden.filter(function(c){return/^[\\w-]+$/.test(c)});'
-            'if(h.length){var st=document.createElement("style");st.id="hidden-courses";st.textContent=h.map(function(c)'
-            '{return\'.course[data-course="\'+c+\'"]\'}).join()+"{display:none}";document.head.appendChild(st)}}catch(e){}'
+            # скрытые в кабинете дисциплины и уровни тестов прячутся до отрисовки (app.js обновляет этот же <style>)
+            'function hid(k,re){try{return JSON.parse(g(k)).hidden.filter(function(c){return re.test(c)})}catch(e){return[]}}'
+            'var hl=hid("prefs:levels",/^(easy|medium|hard)$/),sel=hid("prefs:courses",/^[\\w-]+$/).map(function(c)'
+            '{return\'.course[data-course="\'+c+\'"]\'});if(hl.length<3)hl.forEach(function(l)'
+            '{sel.push(\'.tests-level[data-level="\'+l+\'"]\',".quiz-level#"+l)});'
+            'if(sel.length){var st=document.createElement("style");st.id="hidden-prefs";'
+            'st.textContent=sel.join()+"{display:none}";document.head.appendChild(st)}'
             f'var l=g("look");if(!LOOK_FONTS[l])l="{next(iter(LOOK_FONTS))}";d.dataset.look=l;'
             'var f=document.createElement("link");f.rel="stylesheet";f.href=LOOK_FONTS[l];f.id="look-fonts";'
             "document.head.appendChild(f)})()")
@@ -281,7 +284,8 @@ def tests_page(courses: list[tuple[dict, list[dict]]]) -> str:
 
 
 def cabinet_page(courses: list[tuple[dict, list[dict]]]) -> str:
-    """Личный кабинет me/: переключатели дисциплин, статистика тестов и синхронизация. Всё рисует app.js;
+    """Личный кабинет me/: переключатели дисциплин и уровней тестов, статистика тестов и синхронизация,
+    сбоку — оглавление разделов. Всё рисует app.js;
     отсюда — список дисциплин и тестов с числом вопросов по уровням (JSON в #me-data)."""
     data = [{"slug": c["slug"], "title": c["title"], "color": c.get("color", ""), "count": count_label(lectures),
              "items": [{"href": f"../{c['slug']}/{src_name(l)}/", "label": l["label"], "title": l["title"],
@@ -290,14 +294,22 @@ def cabinet_page(courses: list[tuple[dict, list[dict]]]) -> str:
     payload = json.dumps(data, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     return page("Личный кабинет — Конспекты лекций", "../", f"""
 <h1>Личный кабинет</h1>
-<p class="lead">Какие дисциплины показывать и как идут тесты. Хранится на этом устройстве, а с синхронизацией —
-на всех ваших устройствах.</p>
+<p class="lead">Какие дисциплины и уровни тестов показывать и как идут тесты. Хранится на этом устройстве,
+а с синхронизацией — на всех ваших устройствах.</p>
 <noscript><p>Кабинету нужен JavaScript.</p></noscript>
+<div class="me-layout">
+<nav class="me-toc" aria-label="Разделы кабинета"></nav>
+<div class="me-content">
 <section class="me-block" id="me-courses"><h2>Дисциплины</h2>
 <p class="me-note">Скрытые дисциплины не показываются на главной, на странице «Тесты», в поиске и в статистике.
 Сами конспекты остаются доступны по ссылкам.</p></section>
+<section class="me-block" id="me-levels"><h2>Уровни тестов</h2>
+<p class="me-note">Выключенные уровни не показываются нигде: на странице «Тесты», в самих тестах, в списках лекций
+и в статистике. Хотя бы один уровень остаётся включённым.</p></section>
 <section class="me-block" id="me-stats"><h2>Статистика тестов</h2></section>
 <section class="me-block" id="me-sync"><h2>Синхронизация</h2></section>
+</div>
+</div>
 <script type="application/json" id="me-data">{payload}</script>""", cls="me-page")
 
 

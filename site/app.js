@@ -28,6 +28,8 @@ const store = {
 const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
 const norm = (s) => s.toLowerCase().replaceAll("ё", "е");
 const escapeHtml = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const plural = (n, one, few, many) => `${n} ${n % 10 === 1 && n % 100 !== 11 ? one
+  : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14) ? few : many}`;
 const pagePath = (url) => new URL(url, location.href).pathname.replace(/index\.html$/, "");
 
 function el(tag, attrs = {}, ...children) {
@@ -144,23 +146,37 @@ const cabinetLink = el("a", { class: "icon-btn bar-me", href: new URL("me/", ROO
 // ссылка «Тесты» из шаблона — справа, рядом с кнопками
 bar.append(el("div", { class: "bar-tools" }, ...bar.querySelectorAll(".bar-tests"), cabinetLink, searchButton, settingsButton));
 
-// ---------- скрытые дисциплины (выбираются в личном кабинете) ----------
-// prefs:courses = { t, hidden: [slug курса] }; синхронизируется, свежая запись побеждает целиком.
-// Прячет их CSS-правило в <style id="hidden-courses"> (первый раз его пишет инлайн-скрипт в <head>, до отрисовки):
-// карточки курсов на главной и на странице «Тесты»; поиск и «Продолжить чтение» пропускают их сами.
+// ---------- скрытые дисциплины и уровни тестов (выбираются в личном кабинете) ----------
+// prefs:courses = { t, hidden: [slug курса] }, prefs:levels = { t, hidden: ["hard", …] }; синхронизируются,
+// свежая запись побеждает целиком. Прячет их CSS-правило в <style id="hidden-prefs"> (первый раз его пишет
+// инлайн-скрипт в <head>, до отрисовки): карточки курсов на главной и в «Тестах», кнопки уровней в «Тестах»
+// и уровни на странице теста. Поиск, «Продолжить чтение», вкладки теста и статистика пропускают скрытое сами.
 
 const PREFS_COURSES = "prefs:courses";
+const PREFS_LEVELS = "prefs:levels";
 const COURSE_SLUG = /^[\w-]+$/;
+const QUIZ_LEVELS = ["easy", "medium", "hard"];
+const LEVEL_NAMES = { easy: "Лёгкий", medium: "Средний", hard: "Сложный" };
 
 function hiddenCourses() {
   const hidden = store.json(PREFS_COURSES)?.hidden;
   return new Set(Array.isArray(hidden) ? hidden.filter((c) => COURSE_SLUG.test(c)) : []);
 }
 
-function applyHiddenCourses() {
+// скрытые уровни; все три сразу скрыть нельзя — такая запись считается пустой
+function hiddenLevels() {
+  const hidden = store.json(PREFS_LEVELS)?.hidden;
+  const set = new Set(Array.isArray(hidden) ? hidden.filter((l) => QUIZ_LEVELS.includes(l)) : []);
+  return set.size < QUIZ_LEVELS.length ? set : new Set();
+}
+const shownLevels = () => QUIZ_LEVELS.filter((lv) => !hiddenLevels().has(lv));
+
+function applyPrefs() {
   const hidden = [...hiddenCourses()];
-  const style = document.getElementById("hidden-courses") || document.head.appendChild(el("style", { id: "hidden-courses" }));
-  style.textContent = hidden.length ? `${hidden.map((c) => `.course[data-course="${c}"]`).join()}{display:none}` : "";
+  const rules = [...hidden.map((c) => `.course[data-course="${c}"]`),
+    ...[...hiddenLevels()].flatMap((lv) => [`.tests-level[data-level="${lv}"]`, `.quiz-level#${lv}`])];
+  const style = document.getElementById("hidden-prefs") || document.head.appendChild(el("style", { id: "hidden-prefs" }));
+  style.textContent = rules.length ? `${rules.join()}{display:none}` : "";
   const main = document.querySelector("main");
   const shown = hidden.filter((c) => document.querySelector(`.course[data-course="${c}"]`)).length;
   document.querySelector(".hidden-note")?.remove();
@@ -174,11 +190,22 @@ function setCourseHidden(slug, hide) {
   const hidden = hiddenCourses();
   if (hide) hidden.add(slug); else hidden.delete(slug);
   store.set(PREFS_COURSES, JSON.stringify({ t: Date.now(), hidden: [...hidden] }));
-  applyHiddenCourses();
+  applyPrefs();
 }
 
-applyHiddenCourses();
-document.addEventListener("progress-synced", (e) => e.detail.includes(PREFS_COURSES) && applyHiddenCourses());
+function setLevelHidden(lv, hide) {
+  const hidden = hiddenLevels();
+  if (hide) hidden.add(lv); else hidden.delete(lv);
+  if (hidden.size >= QUIZ_LEVELS.length) return;
+  store.set(PREFS_LEVELS, JSON.stringify({ t: Date.now(), hidden: [...hidden] }));
+  applyPrefs();
+}
+
+applyPrefs();
+// настройки поменялись на другом устройстве (progress-synced) или здесь — перерисовать то, что от них зависит
+document.addEventListener("progress-synced", (e) => {
+  if (e.detail.some((k) => k.startsWith("prefs:"))) applyPrefs();
+});
 
 const FONT_STEPS = ["-1", "0", "1", "2"];
 const THEMES = [["auto", "Авто"], ["light", "Светлая"], ["dark", "Тёмная"]];
@@ -644,7 +671,6 @@ document.addEventListener("keydown", (e) => {
 
 const posKey = (path) => `pos:${path}`;
 const quizKey = (path) => `quiz:${path}`;
-const QUIZ_LEVELS = ["easy", "medium", "hard"];
 const fmtScore = (x) => String(Math.round(x * 2) / 2).replace(".", ",");
 
 function renderMath(root = document) {
@@ -708,16 +734,17 @@ if (!isLecture) {
   }
 }
 
-// результаты теста в списке лекций: «тест 12/15 · 9/15 · —» по уровням, лучший счёт
+// результаты теста в списке лекций: «тест 12/15 · 9/15 · —» по показанным уровням, лучший счёт
 function renderQuizScore(a) {
   const rec = store.json(quizKey(pagePath(a.href)));
   a.querySelector(".quiz-score")?.remove();
   const levels = rec?.levels || {};
-  if (!QUIZ_LEVELS.some((lv) => levels[lv])) return;
-  const parts = QUIZ_LEVELS.map((lv) => levels[lv] ? `${fmtScore(levels[lv].best * levels[lv].n)}/${levels[lv].n}` : "—");
+  const shown = shownLevels();
+  if (!shown.some((lv) => levels[lv])) return;
+  const parts = shown.map((lv) => levels[lv] ? `${fmtScore(levels[lv].best * levels[lv].n)}/${levels[lv].n}` : "—");
   a.querySelector(".num").append(el("span", {
     class: "quiz-score", text: `тест ${parts.join(" · ")}`,
-    title: "Лучший результат теста: лёгкий · средний · сложный уровень",
+    title: `Лучший результат теста: ${shown.map((lv) => LEVEL_NAMES[lv].toLowerCase()).join(" · ")} уровень`,
   }));
 }
 
@@ -1661,7 +1688,7 @@ function initQuiz() {
       return;
     }
     const self = st.items.filter((x) => x.self).length;
-    const next = state[state.indexOf(st) + 1];
+    const next = visible().find((x) => state.indexOf(x) > state.indexOf(st));
     st.footer.replaceChildren(
       el("p", { class: "quiz-total" }, el("b", { text: `${fmtScore(total(st))} из ${n}` }),
         self ? ` — открытые вопросы (${self}) по самооценке` : ""),
@@ -1679,28 +1706,56 @@ function initQuiz() {
     if (push) history.replaceState(history.state, "", `#${st.id}`);
   }
 
+  // уровни, выключенные в кабинете, — без вкладки (сам уровень прячет CSS из applyPrefs);
+  // если в этом тесте нет ни одного включённого уровня, показываются все
+  const visible = () => {
+    const shown = state.filter((st) => !hiddenLevels().has(st.id));
+    return shown.length ? shown : state;
+  };
+  const levelsNote = el("p", { class: "quiz-levels-note" });
+  tabs.after(levelsNote);
+  function applyLevels() {
+    const shown = visible();
+    if (shown.length === state.length) document.getElementById("hidden-prefs").textContent = "";
+    state.forEach((st) => { st.tab.hidden = !shown.includes(st); });
+    const off = state.filter((st) => !shown.includes(st));
+    levelsNote.hidden = !off.length;
+    levelsNote.replaceChildren(`Скрыто в кабинете: ${off.map((st) => st.title.toLowerCase()).join(", ")} · `,
+      el("a", { href: `${cabinetLink.href}#me-levels`, text: "показать" }));
+    state.forEach((st) => complete(st) && render(st)); // кнопка «следующий уровень» ведёт только на показанные
+  }
+
   state.forEach(restore);
-  // другое устройство прислало более свежее прохождение — показать его
+  applyLevels();
   document.addEventListener("progress-synced", (e) => {
-    if (!e.detail.includes(key)) return;
-    state.forEach((st) => {
-      if ((load().cur[st.id]?.t || 0) !== st.curT) restore(st);
-      else renderTab(st);
-    });
+    // другое устройство прислало более свежее прохождение — показать его
+    if (e.detail.includes(key)) {
+      state.forEach((st) => {
+        if ((load().cur[st.id]?.t || 0) !== st.curT) restore(st);
+        else renderTab(st);
+      });
+    }
+    // на другом устройстве выключили уровни — убрать их и уйти с открытого, если он скрыт
+    if (e.detail.includes(PREFS_LEVELS)) {
+      applyLevels();
+      const current = state.find((st) => !st.level.hidden);
+      if (!visible().includes(current)) select(visible()[0]);
+    }
   });
-  const fromHash = state.find((st) => `#${st.id}` === location.hash);
-  const unfinished = state.find((st) => !complete(st) && st.items.some((x) => x.score != null))
-    || state.find((st) => !load().levels[st.id]);
-  select(fromHash || unfinished || state[0], false);
+  const shown = visible();
+  const fromHash = shown.find((st) => `#${st.id}` === location.hash);
+  const unfinished = shown.find((st) => !complete(st) && st.items.some((x) => x.score != null))
+    || shown.find((st) => !load().levels[st.id]);
+  select(fromHash || unfinished || shown[0], false);
 }
 
 // ---------- личный кабинет (me/, страницу собирает build.py) ----------
-// Переключатели дисциплин (prefs:courses) и статистика тестов по записям quiz: — только по показанным дисциплинам.
+// Переключатели дисциплин (prefs:courses) и уровней тестов (prefs:levels), статистика тестов по записям quiz: —
+// только по показанным дисциплинам и уровням, сбоку — оглавление разделов.
 // Список дисциплин и тестов с числом вопросов по уровням — JSON в #me-data.
 
 function initCabinet() {
   const data = JSON.parse(document.getElementById("me-data").textContent);
-  const LEVEL_NAMES = { easy: "Лёгкий", medium: "Средний", hard: "Сложный" };
   const WEAK = 0.7; // ниже — «стоит повторить»
   const pct = (x) => `${Math.round(x * 100)}%`;
   const bar = (x) => el("span", { class: "me-bar" }, el("span", { style: `width: ${(x * 100).toFixed(1)}%` }));
@@ -1719,7 +1774,7 @@ function initCabinet() {
     return course.items.filter((item) => item.quiz).flatMap((item) => {
       const href = new URL(item.href, location.href);
       const rec = store.json(quizKey(pagePath(href))) || {};
-      return QUIZ_LEVELS.filter((lv) => item.quiz[lv]).map((lv) => {
+      return shownLevels().filter((lv) => item.quiz[lv]).map((lv) => {
         const n = item.quiz[lv];
         const done = rec.levels?.[lv] || null;
         const answered = answeredCount(rec, lv);
@@ -1759,6 +1814,66 @@ function initCabinet() {
   const statsHead = statsBox.querySelector("h2");
   const courseList = el("ul", { class: "me-courses" });
   coursesBox.append(courseList);
+  const levelList = el("ul", { class: "me-courses" });
+  document.getElementById("me-levels").append(levelList);
+  const toc = document.querySelector(".me-toc");
+
+  const toggle = (label, on, onclick, disabled = false) => el("button", {
+    type: "button", class: "switch", role: "switch", "aria-checked": String(on), "aria-label": label, disabled, onclick,
+  });
+
+  // число вопросов уровня во всех тестах показанных дисциплин
+  function levelCount(lv) {
+    const hidden = hiddenCourses();
+    return data.filter((c) => !hidden.has(c.slug)).flatMap((c) => c.items).reduce((s, item) => s + (item.quiz?.[lv] || 0), 0);
+  }
+
+  function renderLevels() {
+    const hidden = hiddenLevels();
+    const last = QUIZ_LEVELS.length - hidden.size === 1;
+    levelList.replaceChildren(...QUIZ_LEVELS.map((lv) => {
+      const shown = !hidden.has(lv);
+      const sw = toggle(`Показывать ${LEVEL_NAMES[lv].toLowerCase()} уровень`, shown,
+        () => { setLevelHidden(lv, shown); render(); }, shown && last);
+      sw.title = shown && last ? "Хотя бы один уровень должен остаться" : shown ? "Скрыть уровень" : "Показывать уровень";
+      return el("li", { class: `me-course me-level-pref${shown ? "" : " off"}` },
+        el("span", { class: "me-course-name" }, el("b", { text: LEVEL_NAMES[lv] }),
+          el("span", { class: "count", text: plural(levelCount(lv), "вопрос", "вопроса", "вопросов") })),
+        sw);
+    }));
+  }
+
+  // оглавление: разделы и подзаголовки статистики; текущий раздел подсвечивается при прокрутке
+  function renderToc() {
+    const links = [];
+    document.querySelectorAll(".me-block").forEach((sec) => {
+      links.push(el("a", { href: `#${sec.id}`, text: sec.querySelector("h2").textContent, "data-target": sec.id }));
+      sec.querySelectorAll("h3").forEach((h, i) => {
+        h.id = `${sec.id}-${i + 1}`;
+        links.push(el("a", { class: "sub", href: `#${h.id}`, text: h.textContent, "data-target": h.id }));
+      });
+    });
+    toc.replaceChildren(...links);
+    updateToc();
+  }
+  function updateToc() {
+    const links = [...toc.querySelectorAll("a")];
+    // раздел текущий, когда его начало дошло до места, куда браузер ставит заголовок при переходе по ссылке
+    const line = (parseFloat(getComputedStyle(doc).scrollPaddingTop) || 0) + 48;
+    let active = links[0];
+    for (const a of links) {
+      if (document.getElementById(a.dataset.target)?.getBoundingClientRect().top <= line) active = a;
+    }
+    if (innerHeight + scrollY >= doc.scrollHeight - 2) active = links.filter((a) => !a.classList.contains("sub")).at(-1);
+    const top = active?.classList.contains("sub") ? links.slice(0, links.indexOf(active)).findLast((a) => !a.classList.contains("sub")) : active;
+    links.forEach((a) => a.classList.toggle("active", a === active || a === top));
+    if (narrow.matches && top && !top.dataset.shown) { // на телефоне — прокрутить строку оглавления к текущему разделу
+      links.forEach((a) => delete a.dataset.shown);
+      top.dataset.shown = "1";
+      toc.scrollTo({ left: top.offsetLeft - 16, behavior: reduceMotion.matches ? "auto" : "smooth" });
+    }
+  }
+  onScroll.push(updateToc);
 
   function renderCourses() {
     const hidden = hiddenCourses();
@@ -1782,7 +1897,7 @@ function initCabinet() {
     const all = courses.flatMap((x) => x.levels);
     const out = [];
     if (!all.length) {
-      out.push(el("p", { class: "me-note", text: hiddenHere ? "В показанных дисциплинах тестов пока нет." : "Тестов пока нет." }));
+      out.push(el("p", { class: "me-note", text: hiddenHere || hiddenLevels().size ? "В показанных дисциплинах и уровнях тестов пока нет." : "Тестов пока нет." }));
       statsBox.replaceChildren(statsHead, ...out);
       return;
     }
@@ -1801,7 +1916,7 @@ function initCabinet() {
     }
 
     // по уровням сложности
-    out.push(el("h3", { text: "По уровням" }), el("div", { class: "me-levels" }, ...QUIZ_LEVELS.map((lv) => {
+    out.push(el("h3", { text: "По уровням" }), el("div", { class: "me-levels" }, ...shownLevels().map((lv) => {
       const s = summary(all.filter((x) => x.lv === lv));
       return s.total ? el("div", { class: "me-level" }, el("span", { class: "me-level-name", text: LEVEL_NAMES[lv] }),
         bar(s.passed / s.total), el("span", { class: "me-level-num", text: `${s.passed}/${s.total}${s.avg == null ? "" : ` · ${pct(s.avg)}`}` })) : "";
@@ -1840,13 +1955,16 @@ function initCabinet() {
       out.push(el("h3", { text: "Недавно" }), el("ul", { class: "me-list" }, ...recent.map((x) => el("li", {},
         el("span", { class: "me-when", text: ago(x.done.t) }), itemLine(x), chip(x)))));
     }
-    if (hiddenHere) out.push(el("p", { class: "me-note", text: "Скрытые дисциплины в статистике не учитываются." }));
+    const off = [hiddenHere && "дисциплины", hiddenLevels().size && "уровни"].filter(Boolean);
+    if (off.length) out.push(el("p", { class: "me-note", text: `Скрытые ${off.join(" и ")} в статистике не учитываются.` }));
     statsBox.replaceChildren(statsHead, ...out);
   }
 
   function render() {
     renderCourses();
+    renderLevels();
     renderStats();
+    renderToc();
   }
   render();
   document.addEventListener("progress-synced", render);
