@@ -122,7 +122,8 @@ def read_lecture(d: Path) -> dict:
         m = re.search(rf'^{key}:\s*"?(.*?)"?\s*$', head, re.M)
         return m[1] if m else ""
 
-    duration = re.search(r"Запись\s+([\d:]+)", field("meta-line"))
+    # длительность — первое время вида 3:04:45 после «Запись» (перед ним может стоять дата записи)
+    duration = re.search(r"Запись\b[^·(]*?(\d+:\d\d(?::\d\d)?)", field("meta-line"))
     minutes = max(1, round(len(re.findall(r"\w+", text)) / 180))
     sub, num = re.fullmatch(r"(lab|seminar)?(\d+)", d.name).groups()
     kind = sub or "lecture"

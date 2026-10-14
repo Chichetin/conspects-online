@@ -135,6 +135,8 @@ svg { width: 1.15em; height: 1.15em; fill: none; stroke: currentColor; stroke-wi
 .site-bar .bar-tests:hover { background: var(--tint); }
 .tests-page .site-bar .bar-tests { color: var(--text); }
 .me-page .site-bar .bar-me { color: var(--text); background: var(--tint); }
+/* на телефоне в шапке не хватает места на путь «курс / лекция» — он есть в подзаголовке страницы */
+@media (max-width: 699px) { .site-bar > .sep, .site-bar > .sep + a { display: none; } }
 .bar-tools { margin-left: auto; display: flex; gap: .25rem; flex-shrink: 0; padding-left: .5rem; }
 .icon-btn {
   display: grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0;
