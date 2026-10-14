@@ -1778,10 +1778,11 @@ function initCabinet() {
   function renderStats() {
     const hidden = hiddenCourses();
     const courses = data.filter((c) => !hidden.has(c.slug)).map((c) => ({ c, levels: levelsOf(c) }));
+    const hiddenHere = courses.length < data.length; // в prefs могут остаться slug-и курсов, которых уже нет
     const all = courses.flatMap((x) => x.levels);
     const out = [];
     if (!all.length) {
-      out.push(el("p", { class: "me-note", text: hidden.size ? "В показанных дисциплинах тестов пока нет." : "Тестов пока нет." }));
+      out.push(el("p", { class: "me-note", text: hiddenHere ? "В показанных дисциплинах тестов пока нет." : "Тестов пока нет." }));
       statsBox.replaceChildren(statsHead, ...out);
       return;
     }
@@ -1839,7 +1840,7 @@ function initCabinet() {
       out.push(el("h3", { text: "Недавно" }), el("ul", { class: "me-list" }, ...recent.map((x) => el("li", {},
         el("span", { class: "me-when", text: ago(x.done.t) }), itemLine(x), chip(x)))));
     }
-    if (hidden.size) out.push(el("p", { class: "me-note", text: "Скрытые дисциплины в статистике не учитываются." }));
+    if (hiddenHere) out.push(el("p", { class: "me-note", text: "Скрытые дисциплины в статистике не учитываются." }));
     statsBox.replaceChildren(statsHead, ...out);
   }
 
