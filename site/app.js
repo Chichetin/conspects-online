@@ -676,7 +676,8 @@ const fmtScore = (x) => String(Math.round(x * 2) / 2).replace(".", ",");
 function renderMath(root = document) {
   if (!window.katex) return;
   root.querySelectorAll(".math").forEach((m) => {
-    katex.render(m.textContent, m, { displayMode: m.classList.contains("display"), throwOnError: false });
+    m.dataset.tex ??= m.textContent; // исходник нужен прогрессу чтения: по нему оценивается, сколько читать формулу
+    katex.render(m.dataset.tex, m, { displayMode: m.classList.contains("display"), throwOnError: false });
   });
 }
 
@@ -853,25 +854,45 @@ function initLecture() {
   });
 
   // ----- что прочитано -----
-  // Текст делится на блоки (абзацы, пункты, картинки, таблицы). Блок засчитывается, когда пробыл в средней
-  // части экрана ~40% времени, нужного на его чтение: при быстрой прокрутке он пролетает и не считается.
+  // Текст делится на блоки (абзацы, пункты, картинки, таблицы). Блок засчитывается, когда пробыл в зоне чтения
+  // ~30% времени, нужного на его чтение, или ушёл из неё вверх, набрав хотя бы половину этого: при быстрой
+  // прокрутке он пролетает и не считается. Формулы весят по исходнику TeX — в отрендеренной формуле пробелов нет.
   // Время идёт, только пока вкладка видна, есть активность (≤ 90 с без действий) и не включён режим повторения.
   // Q&A, сноски и глоссарий — справочные, в прогресс не входят. Хранится: { раздел: [номера блоков] }.
-  const WPM = 180;
+  const WPM = 180; // и для «осталось N мин»
+  const DWELL = 0.3; // доля времени чтения, которую блок должен пробыть в зоне
   const BLOCK = "p, li, figure, table, blockquote, pre";
   const glossary = sections.filter((sec) => sectionTitle(sec).replace(/^[\d.]+\s*/, "") === "Глоссарий");
   const skip = (e) => e.closest("details.qa, .footnotes, .lecture-head, .secmeta, .pager, aside") || glossary.some((g) => g.contains(e));
+  // формула → сколько слов текста она «стоит»: значимые символы TeX, крупные операторы — вдвойне;
+  // выносная читается дольше и не меньше ~40 слов
+  function mathWords(m) {
+    const tex = (m.dataset.tex ?? m.textContent)
+      .replace(/\\(?:mathrm|text|textit|textbf|mathbf|mathit|operatorname)\s*\{[^{}]*\}/g, " W ")
+      .replace(/\\(?:left|right|[bB]igg?|quad|qquad|displaystyle|limits|mathcal|mathbb|hat|bar|tilde)(?![a-zA-Z])|\\[,;:! ]/g, " ");
+    const tokens = tex.match(/\\[a-zA-Z]+|\d+(?:[.,]\d+)?|[^\s{}\\_^&]/g) || [];
+    const n = tokens.length + tokens.filter((t) => /^\\(?:d?frac|sum|prod|int|sqrt|lim)$/.test(t)).length;
+    return m.classList.contains("display") ? Math.max(40, n * 3) : n * 1.5;
+  }
+  function blockWords(e) {
+    if (e.matches("figure, pre.mermaid")) return 15;
+    const maths = [...e.querySelectorAll(".math")];
+    if (!maths.length) return (e.textContent.match(/\S+/g) || []).length;
+    const text = e.cloneNode(true);
+    text.querySelectorAll(".math").forEach((m) => m.remove());
+    return (text.textContent.match(/\S+/g) || []).length + maths.reduce((n, m) => n + mathWords(m), 0);
+  }
   const candidates = [...main.querySelectorAll(BLOCK)].filter((e) => !skip(e));
   const candidateSet = new Set(candidates);
   const perSection = new Map();
   const blocks = candidates
     .filter((e) => ![...e.querySelectorAll(BLOCK)].some((x) => candidateSet.has(x))) // самые вложенные
     .map((e) => {
-      const words = e.matches("figure, pre.mermaid") ? 15 : (e.textContent.match(/\S+/g) || []).length;
+      const words = blockWords(e);
       const sec = e.closest("section[id]")?.id || "";
       const idx = perSection.get(sec) || 0;
       perSection.set(sec, idx + 1);
-      return { el: e, sec, idx, words, need: Math.max(1500, (words / WPM) * 60000 * 0.4), acc: 0, read: false };
+      return { el: e, sec, idx, words, need: Math.max(1000, (words / WPM) * 60000 * DWELL), acc: 0, read: false };
     })
     .filter((b) => b.words > 0);
   const byEl = new Map(blocks.map((b) => [b.el, b]));
@@ -1019,33 +1040,55 @@ function initLecture() {
     renderRead();
   });
 
-  const inZone = new Set();
-  const zone = new IntersectionObserver((entries) => {
-    for (const e of entries) {
-      const b = byEl.get(e.target);
-      if (e.isIntersecting) inZone.add(b);
-      else inZone.delete(b);
-    }
-  }, { rootMargin: "-15% 0px -15% 0px" });
-  blocks.forEach((b) => zone.observe(b.el));
-
   let lastActive = Date.now();
   for (const type of ["scroll", "pointerdown", "keydown", "wheel", "touchstart"]) {
     addEventListener(type, () => { lastActive = Date.now(); }, { passive: true });
   }
-  setInterval(() => {
-    if (document.hidden || doc.dataset.review || body.classList.contains("no-scroll") || Date.now() - lastActive > 90000) return;
+  const counting = () => !document.hidden && !doc.dataset.review && !body.classList.contains("no-scroll")
+    && Date.now() - lastActive <= 90000;
+
+  // время в зоне — по часам, а не по тикам: блок, пролетевший зону между тиками, получает доли секунды
+  const inZone = new Map(); // блок → с какого момента его время ещё не учтено
+  function credit(b, now) {
+    if (counting()) b.acc += now - inZone.get(b);
+    inZone.set(b, now);
+  }
+  function update(changed) {
+    if (!changed) return;
+    persist();
+    renderRead();
+  }
+  const zone = new IntersectionObserver((entries) => {
+    const now = Date.now();
     let changed = false;
-    for (const b of inZone) {
-      if (!b.read && (b.acc += 1000) >= b.need) {
-        b.read = true;
-        changed = true;
+    for (const e of entries) {
+      const b = byEl.get(e.target);
+      if (e.isIntersecting) inZone.set(b, now);
+      else if (inZone.has(b)) {
+        credit(b, now);
+        inZone.delete(b);
+        // дочитан и прокручен дальше — хватит и половины времени (последний абзац перед прокруткой не успевает)
+        const passed = e.rootBounds && e.boundingClientRect.bottom <= e.rootBounds.top;
+        if (passed && !b.read && b.acc >= b.need / 2 && counting()) changed = b.read = true;
       }
     }
-    if (changed) {
-      persist();
-      renderRead();
+    update(changed);
+  }, { rootMargin: "-10% 0px -5% 0px" });
+  blocks.forEach((b) => zone.observe(b.el));
+
+  // в фоне таймер редкий: время, пока вкладка была скрыта, не засчитывается
+  document.addEventListener("visibilitychange", () => {
+    const now = Date.now();
+    for (const b of inZone.keys()) inZone.set(b, now);
+  });
+  setInterval(() => {
+    const now = Date.now();
+    let changed = false;
+    for (const b of inZone.keys()) {
+      credit(b, now);
+      if (!b.read && b.acc >= b.need) changed = b.read = true;
     }
+    update(changed);
   }, 1000);
 
   // ----- место чтения: раздел + смещение, чтобы предложить продолжить -----
