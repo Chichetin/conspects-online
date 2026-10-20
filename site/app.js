@@ -1652,7 +1652,7 @@ function initQuiz() {
     const h = level.querySelector("h2");
     const st = { level, id: level.id, title: h.textContent.trim(), curT: 0, savedLast: null };
     st.items = [...level.querySelectorAll(".quiz-q")].map((q) => setupQuestion(q, () => save(st)));
-    st.tab = el("button", { type: "button", role: "tab", class: "quiz-tab", onclick: () => select(st) },
+    st.tab = el("button", { type: "button", role: "tab", class: "quiz-tab", onclick: () => { select(st); scrollTo({ top: 0 }); } },
       el("span", { class: "quiz-tab-name", text: st.title.replace(/\s*уровень$/i, "") }),
       el("span", { class: "quiz-tab-score" }));
     st.footer = el("div", { class: "quiz-footer" });
@@ -1713,6 +1713,17 @@ function initQuiz() {
     st.level.scrollIntoView();
   }
 
+  // ошибки — ответы не на полный балл (у открытых «частично» тоже); верные остаются
+  const wrong = (st) => st.items.filter((x) => x.score != null && x.score < 1);
+  function retryWrong(st) {
+    const list = wrong(st);
+    list.forEach((x) => { x.clear(); x.arrange?.(null); });
+    save(st);
+    document.getElementById(list[0].id).scrollIntoView();
+  }
+  const retryButton = (st, cls) => wrong(st).length
+    ? el("button", { type: "button", class: cls, text: "Сбросить неправильные", onclick: () => retryWrong(st) }) : "";
+
   function renderTab(st) {
     const rec = load().levels[st.id];
     st.tab.querySelector(".quiz-tab-score").textContent = rec
@@ -1727,7 +1738,8 @@ function initQuiz() {
     if (answered < n) {
       st.footer.replaceChildren(el("p", { class: "quiz-progress", text: `Отвечено ${answered} из ${n}` }),
         answered ? el("div", { class: "quiz-actions" },
-          el("button", { type: "button", class: "quiz-btn quiz-btn-alt", text: "Начать заново", onclick: () => restart(st) })) : "");
+          el("button", { type: "button", class: "quiz-btn quiz-btn-alt", text: "Начать заново", onclick: () => restart(st) }),
+          retryButton(st, "quiz-btn quiz-btn-alt")) : "");
       return;
     }
     const self = st.items.filter((x) => x.self).length;
@@ -1737,6 +1749,7 @@ function initQuiz() {
         self ? ` — открытые вопросы (${self}) по самооценке` : ""),
       el("div", { class: "quiz-actions" },
         el("button", { type: "button", class: "quiz-btn", text: "Пройти заново", onclick: () => restart(st) }),
+        retryButton(st, "quiz-btn quiz-btn-alt"),
         next ? el("button", { type: "button", class: "quiz-btn quiz-btn-alt", text: `${next.title} →`, onclick: () => { select(next); scrollTo({ top: 0 }); } }) : ""),
     );
   }
