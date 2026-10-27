@@ -11,6 +11,11 @@ slug = "product-analytics"
 title = "Продуктовая аналитика"
 color = "#c0632b"
 
+[courses.algosi]
+slug = "algorithms"
+title = "Алгоритмы (Авито Академия)"
+color = "#7a4fb0"
+
 [courses.web]
 slug = "web"
 title = "Веб-программирование"
